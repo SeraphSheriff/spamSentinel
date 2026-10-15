@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.20";
+  var SF_VERSION = "1.0.21";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -276,7 +276,9 @@
         return false;
       }
       var out = [];
-      var els = document.querySelectorAll('input, textarea, [contenteditable="true"]');
+      var els = document.querySelectorAll(
+        'input, textarea, [contenteditable="true"], ' +
+        '[role="combobox"], [role="textbox"]');
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
         if (el.type === "hidden") continue;
@@ -319,6 +321,40 @@
         if (c.vis && c.empty) return c;
       }
       return null;
+    }
+    // Finds the visible "To" label inside the same compose as the Send
+    // button (nbsp-tolerant; panel excluded).
+    function findToLabel(sendBtn) {
+      var anc = {}, p = sendBtn, u = 0, key = 0;
+      while (p && u < 14) { anc[key++] = p; p = p.parentElement; u++; }
+      function shared(el) {
+        var q = el.parentElement, v = 0;
+        while (q && v < 14) {
+          var hit = false;
+          for (var k = 0; k < key; k++) if (anc[k] === q) { hit = true; break; }
+          if (hit && q !== document.body && q !== document.documentElement) return true;
+          q = q.parentElement; v++;
+        }
+        return false;
+      }
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+      var node;
+      while ((node = walker.nextNode())) {
+        if (node.children.length) continue;
+        var t = (node.textContent || "").replace(/[\s\u00A0]+/g, " ").trim();
+        if (t !== "To") continue;
+        if (node.closest && node.closest("#" + PANEL_ID)) continue;
+        if (shared(node)) return node;
+      }
+      return null;
+    }
+    // True when the addresses visibly landed (field or its chip row).
+    function verifyFill(el) {
+      var pv = el.value || el.textContent || "";
+      if (pv.indexOf("apwg") !== -1) return true;
+      if (el.parentElement &&
+          (el.parentElement.textContent || "").indexOf("apwg") !== -1) return true;
+      return false;
     }
     function fillField(el) {
       try { el.focus(); } catch (e) {}
@@ -366,21 +402,35 @@
           }
           var cands = collectCandidates(freshSend);
           var pick = pickCandidate(cands);
-          if (!pick) {
-            fail("no To candidate [" + cands.slice(0, 8).map(function (c) {
-              return c.desc + (c.empty ? "(empty)" : "") + (c.vis ? "" : "(hid)");
-            }).join(" | ") + "]");
+          var fp = function (c) {
+            return c.desc + (c.empty ? "(empty)" : "") + (c.vis ? "" : "(hid)");
+          };
+          if (pick) {
+            fillField(pick.el);
+            if (verifyFill(pick.el)) { done(); return; }
+            // Fill didn't stick: fall through to the label-click fallback.
+          }
+          // Fallback: click the To label to focus Gmail's recipient widget,
+          // then fill whatever receives focus.
+          var lab = findToLabel(freshSend);
+          if (!lab) {
+            fail("no To label; candidates [" +
+              cands.slice(0, 8).map(fp).join(" | ") + "]");
             return;
           }
-          fillField(pick.el);
-          var pv = pick.el.value || pick.el.textContent || "";
-          var ok = pv.indexOf("apwg") !== -1;
-          if (!ok && pick.el.parentElement) {
-            // Tokenized into chips: addresses live in the parent row.
-            ok = (pick.el.parentElement.textContent || "").indexOf("apwg") !== -1;
-          }
-          if (ok) done();
-          else fail("fill missed on " + pick.desc);
+          try { lab.click(); } catch (e) {}
+          setTimeout(function () {
+            try {
+              var ae = document.activeElement;
+              if (!ae || ae === document.body) {
+                fail("To label click focused nothing"); return;
+              }
+              fillField(ae);
+              if (verifyFill(ae)) done();
+              else fail("fill missed on focused " +
+                (ae.tagName || "?").toLowerCase());
+            } catch (e) { fail("exception"); }
+          }, 400);
         } catch (e) {
           clearInterval(timer2);
           fail("exception");
