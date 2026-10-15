@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.22";
+  var SF_VERSION = "1.0.23";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -411,35 +411,68 @@
         fillField(pick.el);
         if (verifyFill(pick.el)) { done(); return; }
       }
-      var lab = findToLabelNear(freshSend);
-      if (!lab) {
-        fail("no To label; candidates [" +
-          cands.slice(0, 8).map(fp).join(" | ") + "]");
-        return;
+      focusToInput(freshSend, function (el) {
+        if (!el) {
+          fail("To input not focusable; candidates [" +
+            cands.slice(0, 8).map(fp).join(" | ") + "]");
+          return;
+        }
+        fillField(el);
+        if (verifyFill(el)) done();
+        else fail("fill missed on focused " + (el.tagName || "?").toLowerCase());
+      });
+    }
+    function contactPickerOpen() {
+      return (document.body.textContent || "").indexOf("Select contacts") !== -1;
+    }
+    function closeContactPicker() {
+      if (!contactPickerOpen()) return;
+      try {
+        document.dispatchEvent(new KeyboardEvent("keydown",
+          { key: "Escape", keyCode: 27, which: 27, bubbles: true }));
+      } catch (e) {}
+    }
+    // Focuses Gmail's To input by clicking the input area next to the To
+    // label (NOT the label itself: that opens the contact picker).
+    // Calls done(fillableEl or null).
+    function focusToInput(sendBtn, done) {
+      closeContactPicker();
+      var lab = findToLabelNear(sendBtn);
+      if (!lab) { done(null); return; }
+      var steps = [];
+      var row = lab.parentElement;
+      if (row) {
+        for (var i = 0; i < row.children.length; i++) {
+          var k = row.children[i];
+          if (k === lab) continue;
+          var t = (k.textContent || "").replace(/[\s\u00A0]+/g, " ").trim();
+          if (/^(Cc|Bcc|Cc Bcc)$/.test(t)) continue;
+          steps.push({ el: k });
+        }
+        steps.push({ el: row });
       }
-      try { lab.click(); } catch (e) {}
-      setTimeout(function () {
+      steps.push({ coord: true });
+      var si = 0;
+      function next() {
+        if (si >= steps.length) { done(null); return; }
+        var s = steps[si++];
         try {
-          var ae2 = document.activeElement;
-          if (!isFillable(ae2) && lab.parentElement) {
-            try { lab.parentElement.click(); } catch (e) {}
+          if (s.coord) {
+            var r = lab.getBoundingClientRect();
+            var el = document.elementFromPoint(r.right + 60, r.top + r.height / 2);
+            if (el && !(el.closest && el.closest("#" + PANEL_ID))) el.click();
+          } else {
+            s.el.click();
           }
-          setTimeout(function () {
-            try {
-              var ae3 = document.activeElement;
-              if (!isFillable(ae3)) {
-                fail("To label click focused " +
-                  ((ae3 && ae3.tagName) || "?").toLowerCase());
-                return;
-              }
-              fillField(ae3);
-              if (verifyFill(ae3)) done();
-              else fail("fill missed on focused " +
-                (ae3.tagName || "?").toLowerCase());
-            } catch (e) { fail("exception"); }
-          }, 300);
-        } catch (e) { fail("exception"); }
-      }, 300);
+        } catch (e) {}
+        setTimeout(function () {
+          closeContactPicker();
+          var ae = document.activeElement;
+          if (isFillable(ae)) { done(ae); return; }
+          next();
+        }, 350);
+      }
+      next();
     }
     function fillCompose(sendBefore) {
       var t2 = 0;
