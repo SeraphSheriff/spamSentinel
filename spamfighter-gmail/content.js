@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.19";
+  var SF_VERSION = "1.0.20";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -264,34 +264,61 @@
       }
       return out;
     }
-    // Finds the To field inside a compose scope: name=to, aria-label,
-    // then label-anchored (the visible "To" label never changes).
-    function findToField(scope) {
-      var dbg = [];
-      var n1 = scope.querySelectorAll('textarea[name="to"], input[name="to"]');
-      dbg.push("name=to:" + n1.length);
-      if (n1.length) return { el: n1[0], dbg: dbg.join(",") };
-      var n2 = scope.querySelectorAll('[aria-label="To"]');
-      dbg.push("aria-label:" + n2.length);
-      if (n2.length) return { el: n2[0], dbg: dbg.join(",") };
-      var lab = null, node;
-      var walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
-      while ((node = walker.nextNode())) {
-        if (node.children.length) continue;
-        if ((node.textContent || "").trim() !== "To") continue;
-        if (node.closest && node.closest("#" + PANEL_ID)) continue;
-        lab = node; break;
+    // Collects addressable fields that live in the SAME compose window as
+    // the given Send button (shared non-body ancestor), so page-level
+    // inputs like the Gmail search box are excluded without knowing the
+    // compose's markup.
+    function collectCandidates(sendBtn) {
+      var anc = {}, p = sendBtn, u = 0, key = 0;
+      while (p && u < 14) { anc[key++] = p; p = p.parentElement; u++; }
+      function inAncestors(el) {
+        for (var k = 0; k < key; k++) if (anc[k] === el) return true;
+        return false;
       }
-      dbg.push("toLabel:" + (lab ? "1" : "0"));
-      if (lab) {
-        var par = lab.parentElement, u;
-        for (u = 0; u < 4 && par; u++) {
-          var f = par.querySelector('input, textarea, [contenteditable="true"]');
-          if (f) return { el: f, dbg: dbg.join(",") + ",labelField:1" };
-          par = par.parentElement;
+      var out = [];
+      var els = document.querySelectorAll('input, textarea, [contenteditable="true"]');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.type === "hidden") continue;
+        if (el.closest && el.closest("#" + PANEL_ID)) continue;
+        var al = (el.getAttribute("aria-label") || "").toLowerCase();
+        if (al.indexOf("message body") !== -1) continue;
+        var q = el.parentElement, v = 0, same = false;
+        while (q && v < 14) {
+          if (inAncestors(q) && q !== document.body &&
+              q !== document.documentElement) { same = true; break; }
+          q = q.parentElement; v++;
         }
+        if (!same) continue;
+        var desc = el.tagName.toLowerCase();
+        if (el.id) desc += "#" + el.id;
+        var nm = el.getAttribute("name");
+        if (nm) desc += "[name=" + nm + "]";
+        var ala = el.getAttribute("aria-label");
+        if (ala) desc += "[aria=" + ala.slice(0, 24) + "]";
+        var cls = String(el.className || "").split(" ")[0];
+        if (cls) desc += "." + cls.slice(0, 18);
+        var val = (el.value !== undefined) ? el.value : (el.textContent || "");
+        out.push({ el: el, desc: desc,
+          empty: (val || "").trim() === "", vis: !!el.offsetParent });
       }
-      return { el: null, dbg: dbg.join(",") };
+      return out;
+    }
+    // Picks the To field: explicit name/aria match first, then the only
+    // empty visible field (a fresh forward compose has exactly one: To).
+    function pickCandidate(cands) {
+      var i, c;
+      for (i = 0; i < cands.length; i++) {
+        c = cands[i];
+        var nm = (c.el.getAttribute("name") || "").toLowerCase();
+        var al = (c.el.getAttribute("aria-label") || "").toLowerCase();
+        if (nm === "to" || al === "to") return c;
+      }
+      for (i = 0; i < cands.length; i++) {
+        c = cands[i];
+        if (c.vis && c.empty) return c;
+      }
+      return null;
     }
     function fillField(el) {
       try { el.focus(); } catch (e) {}
@@ -337,20 +364,23 @@
               "\u2192" + sends.length + ")");
             return;
           }
-          var scope = freshSend, u;
-          for (u = 0; u < 10 && scope && scope !== document.body; u++) {
-            scope = scope.parentElement;
-          }
-          scope = scope || document;
-          var found = findToField(scope);
-          if (!found.el) {
-            fail("no To field (" + found.dbg + ")");
+          var cands = collectCandidates(freshSend);
+          var pick = pickCandidate(cands);
+          if (!pick) {
+            fail("no To candidate [" + cands.slice(0, 8).map(function (c) {
+              return c.desc + (c.empty ? "(empty)" : "") + (c.vis ? "" : "(hid)");
+            }).join(" | ") + "]");
             return;
           }
-          fillField(found.el);
-          var check = found.el.value || found.el.textContent || "";
-          if (check.indexOf("apwg") !== -1) done();
-          else fail("To fill did not stick (" + found.dbg + ")");
+          fillField(pick.el);
+          var pv = pick.el.value || pick.el.textContent || "";
+          var ok = pv.indexOf("apwg") !== -1;
+          if (!ok && pick.el.parentElement) {
+            // Tokenized into chips: addresses live in the parent row.
+            ok = (pick.el.parentElement.textContent || "").indexOf("apwg") !== -1;
+          }
+          if (ok) done();
+          else fail("fill missed on " + pick.desc);
         } catch (e) {
           clearInterval(timer2);
           fail("exception");
