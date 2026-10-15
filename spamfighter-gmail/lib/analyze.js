@@ -278,12 +278,43 @@
     };
   }
 
+  // Decode RFC 2047 encoded-words: =?charset?Q?...?= / =?charset?B?...?=
+  function decodeMimeWords(s) {
+    return String(s || "").replace(/=\?([^?\s]+)\?([qQbB])\?([^?]*)\?=/g,
+      function (m, charset, enc, text) {
+        try {
+          var bytes;
+          if (enc.toUpperCase() === "B") {
+            var bin = atob(text);
+            bytes = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          } else {
+            var qp = text.replace(/_/g, " ");
+            var arr = [];
+            for (var j = 0; j < qp.length; j++) {
+              if (qp[j] === "=" && j + 2 < qp.length &&
+                  /^[0-9a-fA-F]{2}$/.test(qp.substr(j + 1, 2))) {
+                arr.push(parseInt(qp.substr(j + 1, 2), 16));
+                j += 2;
+              } else {
+                arr.push(qp.charCodeAt(j) & 0xff);
+              }
+            }
+            bytes = new Uint8Array(arr);
+          }
+          return new TextDecoder(charset || "utf-8").decode(bytes);
+        } catch (e) {
+          return m;
+        }
+      });
+  }
+
   function analyze(rawText) {
     var headers = parseHeaders(rawText);
     var bodyText = String(rawText).split(/\r?\n\r?\n/).slice(1).join("\n\n");
     var text = stripTags(bodyText).slice(0, 100000);
-    var from = getFirst(headers, "from");
-    var subject = getFirst(headers, "subject");
+    var from = decodeMimeWords(getFirst(headers, "from"));
+    var subject = decodeMimeWords(getFirst(headers, "subject"));
     var date = getFirst(headers, "date");
     var messageId = getFirst(headers, "message-id");
     var urls = extractUrls(bodyText + " " + text);

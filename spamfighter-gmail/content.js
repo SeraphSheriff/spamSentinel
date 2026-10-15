@@ -7,7 +7,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.2";
+  var SF_VERSION = "1.0.3";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -148,7 +148,7 @@
       h += '<p class="sf-warn">This came from a big mailbox provider\'s own servers — ' +
         "no complaint generated (it would hit the wrong target).</p>";
     }
-    h += '<div class="sf-links"><b>Also report it</b>' +
+    h += '<div class="sf-links"><b>Also report it:</b> ' +
       '<a href="https://reportfraud.ftc.gov/" target="_blank" rel="noopener">FTC fraud report</a>' +
       '<a href="https://safebrowsing.google.com/safebrowsing/report_phish/" target="_blank" rel="noopener">Google Safe Browsing</a></div>';
     h += '<p class="sf-fine">Nothing is sent automatically. You review and send the complaint yourself.</p>';
