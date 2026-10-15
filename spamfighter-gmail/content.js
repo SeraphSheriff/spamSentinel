@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.16";
+  var SF_VERSION = "1.0.17";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -174,6 +174,40 @@
     }
   }
 
+  // Diagnostic helper: aria-labels of buttons near the message, used to
+  // fix selectors when Gmail's layout doesn't match expectations.
+  function nearbyButtonLabels(msgEl, cap) {
+    var seen = [], seenSet = {}, scope = msgEl, u, i, al;
+    for (u = 0; u < 4 && scope; u++) scope = scope.parentElement;
+    var btns = (scope || document).querySelectorAll("button,[role=button]");
+    for (i = 0; i < btns.length && seen.length < (cap || 12); i++) {
+      al = btns[i].getAttribute("aria-label");
+      if (al && !seenSet[al]) { seenSet[al] = 1; seen.push(al); }
+    }
+    return seen;
+  }
+
+  // Finds the message's Forward control: aria-label match first, then
+  // exact visible-text match (some Gmail layouts use text buttons).
+  function findForwardControl(msgEl) {
+    var root = msgEl, i, j, t;
+    var found = [];
+    while (root && root !== document.body) {
+      var list = root.querySelectorAll(
+        '[aria-label="Forward"],[aria-label="Forward message"]');
+      for (i = 0; i < list.length; i++) found.push(list[i]);
+      var btns = root.querySelectorAll("button,div[role=button]");
+      for (j = 0; j < btns.length; j++) {
+        t = (btns[j].textContent || "").trim();
+        if ((t === "Forward" || t === "Forward message") &&
+            found.indexOf(btns[j]) === -1) found.push(btns[j]);
+      }
+      if (found.length) return found[0];
+      root = root.parentElement;
+    }
+    return null;
+  }
+
   // Forward-to addresses for phishing intake (industry + government).
   var SF_FWD_TO = ["reportphishing@apwg.org", "report@cisa.gov"];
 
@@ -191,18 +225,26 @@
       return { ok: false, dbg: dbg };
     }
     function done() {
-      if (rb) rb.textContent = "Forward addressed \u2014 review and hit Send";
+      if (rb) {
+        rb.textContent = "Forward addressed \u2014 review and hit Send";
+        // Re-arm: if the user closed the compose without sending,
+        // they get the button back instead of a dead panel.
+        setTimeout(function () {
+          rb.disabled = false;
+          rb.textContent = "Forward phish to APWG + CISA";
+        }, 12000);
+      }
       return { ok: true };
     }
     try {
       var msgEl = document.querySelector("[data-legacy-message-id]");
       if (!msgEl) return fail("no message element");
-      var fwd = null, root = msgEl;
-      while (root && root !== document.body && !fwd) {
-        fwd = root.querySelector('[aria-label="Forward"]');
-        root = root.parentElement;
+      var fwd = findForwardControl(msgEl);
+      if (!fwd) {
+        var inDoc = document.querySelectorAll('[aria-label="Forward"]').length;
+        return fail("no Forward button; aria-label matches in page: " + inDoc +
+          "; nearby: " + nearbyButtonLabels(msgEl, 15).join(" / "));
       }
-      if (!fwd) return fail("no Forward button");
       var before = Array.prototype.slice.call(
         document.querySelectorAll('textarea[name="to"]'));
       if (rb) { rb.disabled = true; rb.textContent = "Opening forward\u2026"; }
@@ -353,6 +395,12 @@
           rb.disabled = true;
           if (r.ok) {
             rb.textContent = "Opening Gmail\u2019s report dialog\u2026";
+            // Re-arm: if the user cancels Gmail's dialog, the button
+            // comes back instead of staying dead until a page refresh.
+            setTimeout(function () {
+              rb.disabled = false;
+              rb.textContent = "Report phishing to Google";
+            }, 8000);
           } else {
             rb.textContent = "Couldn't open it (" + String(r.dbg).slice(0, 140) +
               ") \u2014 use the three-dot menu manually";
