@@ -7,6 +7,7 @@
 (function () {
   "use strict";
 
+  var SF_VERSION = "1.0.1";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -151,7 +152,7 @@
     }
   }
 
-  function fetchOriginal(mid) {
+  function fetchOriginal(mid, onStep) {
     var ik = ikParam();
     var acct = accountIndex();
     var urls = [];
@@ -173,12 +174,23 @@
       }
     }
 
+    function step(s) {
+      if (onStep) { try { onStep(s); } catch (e) {} }
+    }
+
     function attempt(i) {
       if (i >= urls.length) {
         throw new Error("Gmail wouldn't hand over the headers " +
           "(tried " + urls.length + " URL forms).");
       }
-      return fetch(urls[i], { credentials: "include" }).then(function (res) {
+      step("Fetching full headers (try " + (i + 1) + "/" + urls.length + ")…");
+      var p;
+      try {
+        p = fetch(urls[i], { credentials: "include" });
+      } catch (e) {
+        return attempt(i + 1);
+      }
+      return Promise.resolve(p).then(function (res) {
         if (!res.ok) return attempt(i + 1); // try next form
         return res.text();
       }, function () {
@@ -201,20 +213,32 @@
   function onShieldClick() {
     var mid = currentMessageId();
     if (!mid) {
-      var body = showPanel("");
-      body.innerHTML = '<p class="sf-warn">Open a single email first, then click the shield.</p>';
+      var body0 = showPanel("");
+      body0.innerHTML = '<p class="sf-warn">Open a single email first, then click the shield.</p>';
       return;
     }
     var panel = showPanel("");
-    renderLoading(panel, "Reading the full headers…");
-    fetchOriginal(mid).then(function (raw) {
-      return window.Spamfighter.investigate(raw, function (step) {
-        renderLoading(panel, step);
-      });
+    function prog(s) { renderLoading(panel, s); }
+    prog("Finding the open message…");
+    var p;
+    try {
+      p = fetchOriginal(mid, prog);
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    Promise.resolve(p).then(function (raw) {
+      return window.Spamfighter.investigate(raw, prog);
     }).then(function (a) {
       renderResult(panel, a);
     }).catch(function (err) {
-      panel.innerHTML = '<p class="sf-warn">Something broke: ' + esc(err.message || err) +
+      var msg;
+      try {
+        msg = String((err && err.message) || err);
+      } catch (x) {
+        msg = "unreadable error object";
+      }
+      panel.innerHTML = '<p class="sf-warn">Something broke (v' + SF_VERSION +
+        "): " + esc(msg) +
         '. Try reloading Gmail and clicking the shield again.</p>';
     });
   }
