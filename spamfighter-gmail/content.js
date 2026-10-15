@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.14";
+  var SF_VERSION = "1.0.15";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -130,9 +130,9 @@
     try {
       var msgEl = document.querySelector("[data-legacy-message-id]");
       if (!msgEl) return fail("no message element");
-      var inDoc = document.querySelectorAll('[aria-label="More"]').length;
+      var inDoc = document.querySelectorAll('[aria-label="More message options"]').length;
       var more = null, root = msgEl;
-      var labels = ["More", "More options"];
+      var labels = ["More message options", "More", "More options"];
       while (root && root !== document.body && !more) {
         for (var l = 0; l < labels.length; l++) {
           more = root.querySelector('[aria-label="' + labels[l] + '"]');
