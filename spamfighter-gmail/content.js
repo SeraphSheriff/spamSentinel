@@ -7,7 +7,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.8";
+  var SF_VERSION = "1.0.9";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
