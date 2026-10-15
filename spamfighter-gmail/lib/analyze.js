@@ -324,9 +324,48 @@
       });
   }
 
+  // Decode quoted-printable body text (soft breaks + =XX escapes).
+  function decodeQP(text) {
+    return String(text || "")
+      .replace(/=\r?\n/g, "")
+      .replace(/=([0-9A-Fa-f]{2})/g, function (m, hex) {
+        return String.fromCharCode(parseInt(hex, 16));
+      });
+  }
+
+  function decodeBody(bodyText, headers) {
+    var cte = getFirst(headers, "content-transfer-encoding").toLowerCase();
+    var t = String(bodyText || "");
+    try {
+      if (cte.indexOf("base64") !== -1 && t.length > 100) {
+        var bin = atob(t.replace(/\s+/g, ""));
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder("utf-8").decode(bytes);
+      }
+    } catch (e) {}
+    if (cte.indexOf("quoted-printable") !== -1 || /=[0-9A-Fa-f]{2}/.test(t)) {
+      try { return decodeQP(t); } catch (e) {}
+    }
+    return t;
+  }
+
+  // The Received header the traced IP actually came from (best evidence).
+  function evidenceHeader(headers, ip) {
+    var recvd = getAll(headers, "received");
+    if (!ip || !recvd.length) {
+      return recvd.length ? recvd[recvd.length - 1].slice(0, 300) : null;
+    }
+    for (var i = recvd.length - 1; i >= 0; i--) {
+      if (recvd[i].indexOf(ip) !== -1) return recvd[i].slice(0, 300);
+    }
+    return recvd[recvd.length - 1].slice(0, 300);
+  }
+
   function analyze(rawText) {
     var headers = parseHeaders(rawText);
     var bodyText = String(rawText).split(/\r?\n\r?\n/).slice(1).join("\n\n");
+    bodyText = decodeBody(bodyText, headers);
     var text = stripTags(bodyText).slice(0, 100000);
     var from = decodeMimeWords(getFirst(headers, "from"));
     var subject = decodeMimeWords(getFirst(headers, "subject"));
@@ -335,12 +374,11 @@
     var urls = extractUrls(bodyText + " " + text);
     var ip = originIp(headers);
     var rf = redFlags(from, urls, text);
-    var recvd = getAll(headers, "received");
     return {
       from: from, subject: subject, date: date, messageId: messageId,
       ip: ip, urls: urls, urlHosts: rf.urlHosts, senderDomain: rf.senderDomain,
       flags: rf.flags,
-      ingressReceived: recvd.length ? recvd[recvd.length - 1].slice(0, 300) : null,
+      ingressReceived: evidenceHeader(headers, ip),
       bodyPreview: text.slice(0, 1500)
     };
   }
