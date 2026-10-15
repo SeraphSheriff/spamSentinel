@@ -226,7 +226,7 @@
     var m;
     URL_RE.lastIndex = 0;
     while ((m = URL_RE.exec(text))) {
-      var u = m[0].replace(/[.,;!)\]}"']+$/, "");
+      var u = m[0].replace(/[.,;!)\]}"'=]+$/, "");
       if (u && urls.indexOf(u) === -1 && urls.length < 20) urls.push(u);
     }
     return urls;
