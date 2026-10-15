@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.17";
+  var SF_VERSION = "1.0.18";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -160,9 +160,17 @@
         var items = document.querySelectorAll(
           '[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]');
         for (var i = 0; i < items.length; i++) {
-          if ((items[i].textContent || "").trim().toLowerCase() === "report phishing") {
+          var mt = (items[i].textContent || "").trim().toLowerCase();
+          if (mt === "report phishing") {
             clearInterval(timer);
             items[i].click();
+            return;
+          }
+          if (mt === "report not phishing") {
+            // Already reported: Gmail swaps the menu item out.
+            clearInterval(timer);
+            more.click(); // close the menu
+            markAlreadyReported();
             return;
           }
         }
@@ -187,39 +195,48 @@
     return seen;
   }
 
-  // Finds the message's Forward control: aria-label match first, then
-  // exact visible-text match (some Gmail layouts use text buttons).
-  function findForwardControl(msgEl) {
-    var root = msgEl, i, j, t;
-    var found = [];
-    while (root && root !== document.body) {
-      var list = root.querySelectorAll(
-        '[aria-label="Forward"],[aria-label="Forward message"]');
-      for (i = 0; i < list.length; i++) found.push(list[i]);
-      var btns = root.querySelectorAll("button,div[role=button]");
-      for (j = 0; j < btns.length; j++) {
-        t = (btns[j].textContent || "").trim();
-        if ((t === "Forward" || t === "Forward message") &&
-            found.indexOf(btns[j]) === -1) found.push(btns[j]);
+  // Walks up from the message to its "More message options" menu button.
+  function findMoreButton(msgEl) {
+    var more = null, root = msgEl;
+    var labels = ["More message options", "More", "More options"];
+    while (root && root !== document.body && !more) {
+      for (var l = 0; l < labels.length; l++) {
+        more = root.querySelector('[aria-label="' + labels[l] + '"]');
+        if (more) break;
       }
-      if (found.length) return found[0];
       root = root.parentElement;
     }
-    return null;
+    return more;
+  }
+
+  // Marks the report button "already reported" (message was previously
+  // reported: Gmail drops "Report phishing" from the menu and shows a
+  // banner instead).
+  function markAlreadyReported() {
+    var rb2 = document.getElementById("sf-report-phish");
+    if (rb2) {
+      rb2.disabled = true;
+      rb2.textContent = "Already reported to Google \u2713";
+      setTimeout(function () {
+        rb2.disabled = false;
+        rb2.textContent = "Report phishing to Google";
+      }, 8000);
+    }
   }
 
   // Forward-to addresses for phishing intake (industry + government).
   var SF_FWD_TO = ["reportphishing@apwg.org", "report@cisa.gov"];
 
-  // Opens Gmail's native Forward for the open message and prefills the To
-  // field with the APWG + CISA intake addresses. The user reviews the
-  // forward and hits Send themselves. Updates the panel button directly.
+  // Opens the message's three-dot menu, clicks its Forward item, then
+  // prefills the forward compose's To field with the APWG + CISA intake
+  // addresses. The user reviews the forward and hits Send themselves.
+  // Updates the panel button directly.
   function gmailForwardPhish() {
     var rb = document.getElementById("sf-fwd-phish");
     function fail(dbg) {
       if (rb) {
         rb.disabled = true;
-        rb.textContent = "Couldn't open forward (" + String(dbg).slice(0, 100) +
+        rb.textContent = "Couldn't open forward (" + String(dbg).slice(0, 160) +
           ") \u2014 forward it manually";
       }
       return { ok: false, dbg: dbg };
@@ -236,30 +253,18 @@
       }
       return { ok: true };
     }
-    try {
-      var msgEl = document.querySelector("[data-legacy-message-id]");
-      if (!msgEl) return fail("no message element");
-      var fwd = findForwardControl(msgEl);
-      if (!fwd) {
-        var inDoc = document.querySelectorAll('[aria-label="Forward"]').length;
-        return fail("no Forward button; aria-label matches in page: " + inDoc +
-          "; nearby: " + nearbyButtonLabels(msgEl, 15).join(" / "));
-      }
-      var before = Array.prototype.slice.call(
-        document.querySelectorAll('textarea[name="to"]'));
-      if (rb) { rb.disabled = true; rb.textContent = "Opening forward\u2026"; }
-      fwd.click();
-      var tries = 0;
-      var timer = setInterval(function () {
+    function fillCompose(before) {
+      var t2 = 0;
+      var timer2 = setInterval(function () {
         try {
-          tries++;
+          t2++;
           var now = document.querySelectorAll('textarea[name="to"]');
           var fresh = null, i;
           for (i = 0; i < now.length; i++) {
             if (before.indexOf(now[i]) === -1) { fresh = now[i]; break; }
           }
-          if (!fresh && tries <= 20) return; // keep waiting (~5s)
-          clearInterval(timer);
+          if (!fresh && t2 <= 20) return; // keep waiting (~5s)
+          clearInterval(timer2);
           if (!fresh) {
             fail("toFields " + before.length + "\u2192" + now.length +
               ", no new compose");
@@ -279,10 +284,46 @@
             { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
           done();
         } catch (e) {
-          clearInterval(timer);
+          clearInterval(timer2);
           fail("exception");
         }
       }, 250);
+    }
+    try {
+      var msgEl = document.querySelector("[data-legacy-message-id]");
+      if (!msgEl) return fail("no message element");
+      var more = findMoreButton(msgEl);
+      if (!more) {
+        return fail("no message menu; nearby: " +
+          nearbyButtonLabels(msgEl, 12).join(" / "));
+      }
+      var before = Array.prototype.slice.call(
+        document.querySelectorAll('textarea[name="to"]'));
+      if (rb) { rb.disabled = true; rb.textContent = "Opening forward\u2026"; }
+      more.click();
+      var tries = 0;
+      var timer = setInterval(function () {
+        try {
+          tries++;
+          var items = document.querySelectorAll(
+            '[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]');
+          for (var i = 0; i < items.length; i++) {
+            if ((items[i].textContent || "").trim().toLowerCase() === "forward") {
+              clearInterval(timer);
+              items[i].click();
+              fillCompose(before);
+              return;
+            }
+          }
+          if (tries > 25) { // ~5s
+            clearInterval(timer);
+            fail("no Forward item in menu");
+          }
+        } catch (e) {
+          clearInterval(timer);
+          fail("exception");
+        }
+      }, 200);
       return { ok: true, pending: true };
     } catch (e) {
       return fail("exception");
@@ -391,6 +432,13 @@
         var rb = h("button", { id: "sf-report-phish" },
           "Report phishing to Google");
         rb.addEventListener("click", function () {
+          // Already-reported messages show a Gmail banner ("You reported
+          // this message as phishing") instead of the report dialog.
+          if ((document.body.textContent || "").indexOf(
+                "reported this message as phishing") !== -1) {
+            markAlreadyReported();
+            return;
+          }
           var r = gmailReportPhishing();
           rb.disabled = true;
           if (r.ok) {
