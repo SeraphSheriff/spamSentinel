@@ -70,24 +70,39 @@
   }
 
   // First public IPv4 in the oldest Received header (ingress hop).
+  // Tries bracketed IPs first (highest confidence), then bare IPs.
   function originIp(headers) {
     var recvd = getAll(headers, "received");
-    var pat = /\[(\d{1,3}(?:\.\d{1,3}){3})\]/g;
-    var cands = [];
-    var m;
-    if (recvd.length) {
-      while ((m = pat.exec(recvd[recvd.length - 1]))) cands.push(m[1]);
-    }
-    if (!cands.length) {
-      recvd.forEach(function (h) {
-        pat.lastIndex = 0;
-        while ((m = pat.exec(h))) cands.push(m[1]);
+    var bracketPat = /\[(\d{1,3}(?:\.\d{1,3}){3})\]/g;
+    var barePat = /(?:^|[^0-9.])([0-9]{1,3}(?:\.[0-9]{1,3}){3})(?![0-9.])/g;
+    function validIp(ip) {
+      var parts = String(ip).split(".");
+      if (parts.length !== 4) return false;
+      return parts.every(function (p) {
+        return /^\d{1,3}$/.test(p) && parseInt(p, 10) <= 255;
       });
     }
-    for (var i = 0; i < cands.length; i++) {
-      if (!isPrivateIp(cands[i])) return cands[i];
+    function candsFrom(text, pat) {
+      var cands = [], m;
+      pat.lastIndex = 0;
+      while ((m = pat.exec(text))) {
+        if (validIp(m[1]) && !isPrivateIp(m[1])) cands.push(m[1]);
+      }
+      return cands;
     }
-    return null;
+    function sweep(pat) {
+      var cands = [];
+      if (recvd.length) {
+        cands = candsFrom(recvd[recvd.length - 1], pat);
+      }
+      for (var i = 0; i < recvd.length && !cands.length; i++) {
+        cands = candsFrom(recvd[i], pat);
+      }
+      return cands;
+    }
+    var cands = sweep(bracketPat);
+    if (!cands.length) cands = sweep(barePat);
+    return cands.length ? cands[0] : null;
   }
 
   function fetchJson(url, timeoutMs) {

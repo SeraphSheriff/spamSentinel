@@ -7,7 +7,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.3";
+  var SF_VERSION = "1.0.4";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -117,7 +117,8 @@
     h += '<div class="sf-row"><span>Subject</span><b>' + esc(a.subject || "(no subject)") + "</b></div>";
     if (!a.ip) {
       h += '<p class="sf-warn">Couldn\'t find the sending server in the headers. ' +
-        "Nothing to report — but you can still forward it to the FTC link below.</p>";
+        "That happens with mailing lists, forwards, and some bulk senders. " +
+        "Nothing to complain to directly — but the report links below still apply.</p>";
     } else {
       h += '<div class="sf-row"><span>Sending IP</span><b class="sf-mono">' + esc(a.ip) + "</b></div>";
       h += '<div class="sf-row"><span>Server</span><b>' + esc(a.host || "unknown") + "</b></div>";
