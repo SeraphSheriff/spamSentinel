@@ -4,6 +4,14 @@ A self-defense system for cPanel shared hosting: watches your mail logs for
 spam, quarantines the senders' IPs, and files abuse complaints with the
 spammers' hosting providers — automatically.
 
+**No cPanel?** See [Spamfighter](spamfighter/) — the little sibling anyone
+can run on their own PC: save spam emails as files, get ready-to-send abuse
+complaints. No accounts, no configuration.
+
+**Live blocklist:** [blocked-ips.txt](blocked-ips.txt) — every spammer IP
+this system has quarantined to date, updated periodically. One operator's
+observed telemetry, not a vetted feed — use at your own risk.
+
 ## What it does
 
 1. **Watches** cPanel's mail delivery logs (via the UAPI) for incoming spam

@@ -1,0 +1,10 @@
+Save spam emails as .eml files into THIS folder, then run the script.
+
+How to save one email as a file:
+  Outlook (desktop):  open the email, File > Save As > choose ".eml"
+  Outlook (web):      open the email, ... menu > Save as (or Print > Save as PDF won't work — use Download)
+  Gmail:              open the email, click the ... menu > "Download message"
+  Apple Mail:         select the email, File > Save As > Format: Raw Message Source
+  Thunderbird:        right-click the email > Save As > File
+
+Then double-click RUN.bat (Windows) and look in the "reports" folder.
