@@ -19,7 +19,7 @@
   var PROVIDER_WHITELIST = [
     "google.com", "googlemail.com", "outlook.com", "hotmail.com",
     "live.com", "microsoft.com", "yahoo.com", "aol.com", "icloud.com",
-    "me.com", "mac.com", "proton.me", "protonmail.com", "zoho.com"
+    "me.com", "mac.com", "apple.com", "proton.me", "protonmail.com", "zoho.com"
   ];
 
   var SKETCHY_TLDS = ["shop", "top", "xyz", "click", "buzz", "lol", "gdn",
@@ -220,8 +220,8 @@
     function has(d) { return host === d || host.endsWith("." + d); }
     if (has("google.com") || has("googlemail.com")) {
       return "Sent from a real Gmail account — the header trail ends here. " +
-        "To kill it, report the account itself: in Gmail, open the \u22EE menu " +
-        "on this message and choose \u201CReport phishing\u201D.";
+        "To kill it, report the account itself: in Gmail, open the three-dot " +
+        "menu on this message and choose \u201CReport phishing\u201D.";
     }
     if (has("outlook.com") || has("hotmail.com") || has("live.com") ||
         has("msn.com") || has("protection.outlook.com")) {
@@ -234,7 +234,7 @@
         "Use your mail app's \u201CReport phishing\u201D option to flag the " +
         "sender's account.";
     }
-    if (has("icloud.com") || has("me.com") || has("mac.com")) {
+    if (has("icloud.com") || has("me.com") || has("mac.com") || has("apple.com")) {
       return "Sent from a real iCloud account — the header trail ends here. " +
         "Forward it to reportphishing@apple.com to flag the account.";
     }
