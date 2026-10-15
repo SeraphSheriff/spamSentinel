@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.18";
+  var SF_VERSION = "1.0.19";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -253,36 +253,104 @@
       }
       return { ok: true };
     }
-    function fillCompose(before) {
+    // All "Send"-labeled buttons currently on the page (compose windows).
+    function findSendButtons() {
+      var out = [];
+      var els = document.querySelectorAll('button, [role="button"]');
+      for (var i = 0; i < els.length; i++) {
+        var t = (els[i].textContent || "").trim().toLowerCase();
+        var al = (els[i].getAttribute("aria-label") || "").toLowerCase();
+        if (t === "send" || al === "send") out.push(els[i]);
+      }
+      return out;
+    }
+    // Finds the To field inside a compose scope: name=to, aria-label,
+    // then label-anchored (the visible "To" label never changes).
+    function findToField(scope) {
+      var dbg = [];
+      var n1 = scope.querySelectorAll('textarea[name="to"], input[name="to"]');
+      dbg.push("name=to:" + n1.length);
+      if (n1.length) return { el: n1[0], dbg: dbg.join(",") };
+      var n2 = scope.querySelectorAll('[aria-label="To"]');
+      dbg.push("aria-label:" + n2.length);
+      if (n2.length) return { el: n2[0], dbg: dbg.join(",") };
+      var lab = null, node;
+      var walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
+      while ((node = walker.nextNode())) {
+        if (node.children.length) continue;
+        if ((node.textContent || "").trim() !== "To") continue;
+        if (node.closest && node.closest("#" + PANEL_ID)) continue;
+        lab = node; break;
+      }
+      dbg.push("toLabel:" + (lab ? "1" : "0"));
+      if (lab) {
+        var par = lab.parentElement, u;
+        for (u = 0; u < 4 && par; u++) {
+          var f = par.querySelector('input, textarea, [contenteditable="true"]');
+          if (f) return { el: f, dbg: dbg.join(",") + ",labelField:1" };
+          par = par.parentElement;
+        }
+      }
+      return { el: null, dbg: dbg.join(",") };
+    }
+    function fillField(el) {
+      try { el.focus(); } catch (e) {}
+      var v = SF_FWD_TO.join(", ");
+      var filled = false;
+      try {
+        Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, "value").set.call(el, v);
+        filled = true;
+      } catch (e) {}
+      if (!filled) {
+        try {
+          Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, "value").set.call(el, v);
+          filled = true;
+        } catch (e2) {}
+      }
+      if (!filled) {
+        try { el.value = v; filled = ("value" in el); } catch (e3) {}
+      }
+      if (!filled) el.textContent = v;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent("keydown",
+        { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent("keyup",
+        { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+      try { el.blur(); } catch (e) {}
+    }
+    function fillCompose(sendBefore) {
       var t2 = 0;
       var timer2 = setInterval(function () {
         try {
           t2++;
-          var now = document.querySelectorAll('textarea[name="to"]');
-          var fresh = null, i;
-          for (i = 0; i < now.length; i++) {
-            if (before.indexOf(now[i]) === -1) { fresh = now[i]; break; }
+          var sends = findSendButtons();
+          var freshSend = null, i;
+          for (i = 0; i < sends.length; i++) {
+            if (sendBefore.indexOf(sends[i]) === -1) { freshSend = sends[i]; break; }
           }
-          if (!fresh && t2 <= 20) return; // keep waiting (~5s)
+          if (!freshSend && t2 <= 20) return; // keep waiting (~5s)
           clearInterval(timer2);
-          if (!fresh) {
-            fail("toFields " + before.length + "\u2192" + now.length +
-              ", no new compose");
+          if (!freshSend) {
+            fail("no new compose (send buttons " + sendBefore.length +
+              "\u2192" + sends.length + ")");
             return;
           }
-          fresh.focus();
-          var v = SF_FWD_TO.join(", ");
-          try {
-            var setter = Object.getOwnPropertyDescriptor(
-              window.HTMLTextAreaElement.prototype, "value").set;
-            if (setter) setter.call(fresh, v); else fresh.value = v;
-          } catch (e) { fresh.value = v; }
-          fresh.dispatchEvent(new Event("input", { bubbles: true }));
-          fresh.dispatchEvent(new KeyboardEvent("keydown",
-            { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
-          fresh.dispatchEvent(new KeyboardEvent("keyup",
-            { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
-          done();
+          var scope = freshSend, u;
+          for (u = 0; u < 10 && scope && scope !== document.body; u++) {
+            scope = scope.parentElement;
+          }
+          scope = scope || document;
+          var found = findToField(scope);
+          if (!found.el) {
+            fail("no To field (" + found.dbg + ")");
+            return;
+          }
+          fillField(found.el);
+          var check = found.el.value || found.el.textContent || "";
+          if (check.indexOf("apwg") !== -1) done();
+          else fail("To fill did not stick (" + found.dbg + ")");
         } catch (e) {
           clearInterval(timer2);
           fail("exception");
@@ -297,8 +365,7 @@
         return fail("no message menu; nearby: " +
           nearbyButtonLabels(msgEl, 12).join(" / "));
       }
-      var before = Array.prototype.slice.call(
-        document.querySelectorAll('textarea[name="to"]'));
+      var sendBefore = findSendButtons();
       if (rb) { rb.disabled = true; rb.textContent = "Opening forward\u2026"; }
       more.click();
       var tries = 0;
@@ -311,7 +378,7 @@
             if ((items[i].textContent || "").trim().toLowerCase() === "forward") {
               clearInterval(timer);
               items[i].click();
-              fillCompose(before);
+              fillCompose(sendBefore);
               return;
             }
           }
