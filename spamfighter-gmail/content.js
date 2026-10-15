@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.21";
+  var SF_VERSION = "1.0.22";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -324,30 +324,6 @@
     }
     // Finds the visible "To" label inside the same compose as the Send
     // button (nbsp-tolerant; panel excluded).
-    function findToLabel(sendBtn) {
-      var anc = {}, p = sendBtn, u = 0, key = 0;
-      while (p && u < 14) { anc[key++] = p; p = p.parentElement; u++; }
-      function shared(el) {
-        var q = el.parentElement, v = 0;
-        while (q && v < 14) {
-          var hit = false;
-          for (var k = 0; k < key; k++) if (anc[k] === q) { hit = true; break; }
-          if (hit && q !== document.body && q !== document.documentElement) return true;
-          q = q.parentElement; v++;
-        }
-        return false;
-      }
-      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
-      var node;
-      while ((node = walker.nextNode())) {
-        if (node.children.length) continue;
-        var t = (node.textContent || "").replace(/[\s\u00A0]+/g, " ").trim();
-        if (t !== "To") continue;
-        if (node.closest && node.closest("#" + PANEL_ID)) continue;
-        if (shared(node)) return node;
-      }
-      return null;
-    }
     // True when the addresses visibly landed (field or its chip row).
     function verifyFill(el) {
       var pv = el.value || el.textContent || "";
@@ -359,29 +335,111 @@
     function fillField(el) {
       try { el.focus(); } catch (e) {}
       var v = SF_FWD_TO.join(", ");
-      var filled = false;
-      try {
-        Object.getOwnPropertyDescriptor(
-          window.HTMLTextAreaElement.prototype, "value").set.call(el, v);
-        filled = true;
-      } catch (e) {}
-      if (!filled) {
+      // Try the editing pipeline first (works on Gmail's div widgets);
+      // fall back to direct value/text assignment.
+      var before = el.value || el.textContent || "";
+      var inserted = false;
+      try { inserted = document.execCommand("insertText", false, v); } catch (e) {}
+      var after = el.value || el.textContent || "";
+      if (!inserted || after === before) {
+        var filled = false;
         try {
           Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype, "value").set.call(el, v);
+            window.HTMLTextAreaElement.prototype, "value").set.call(el, v);
           filled = true;
-        } catch (e2) {}
+        } catch (e0) {}
+        if (!filled) {
+          try {
+            Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype, "value").set.call(el, v);
+            filled = true;
+          } catch (e1) {}
+        }
+        if (!filled) {
+          try { el.value = v; filled = ("value" in el); } catch (e2) {}
+        }
+        if (!filled) el.textContent = v;
       }
-      if (!filled) {
-        try { el.value = v; filled = ("value" in el); } catch (e3) {}
-      }
-      if (!filled) el.textContent = v;
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new KeyboardEvent("keydown",
         { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
       el.dispatchEvent(new KeyboardEvent("keyup",
         { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
       try { el.blur(); } catch (e) {}
+    }
+    // Fillable-element test (excludes body and our own panel).
+    function isFillable(el) {
+      if (!el || el === document.body || el === document.documentElement) return false;
+      if (el.closest && el.closest("#" + PANEL_ID)) return false;
+      var tag = (el.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea") return el.type !== "hidden";
+      if (el.getAttribute("contenteditable") === "true") return true;
+      var r = el.getAttribute("role");
+      return r === "combobox" || r === "textbox";
+    }
+    // Nearest element whose visible text is exactly "To" and which comes
+    // before the Send button in document order (the compose's To label).
+    function findToLabelNear(sendBtn) {
+      var best = null;
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+      var node;
+      while ((node = walker.nextNode())) {
+        var t = (node.textContent || "").replace(/[\s\u00A0]+/g, " ").trim();
+        if (t !== "To") continue;
+        if (node.closest && node.closest("#" + PANEL_ID)) continue;
+        var pos;
+        try { pos = node.compareDocumentPosition(sendBtn); } catch (e) { continue; }
+        if (!(pos & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+        best = node; // last match wins = nearest to Send
+      }
+      return best;
+    }
+    // Addresses the fresh compose: tries autofocused field, direct
+    // candidates, then To-label click as fallback.
+    function addressCompose(freshSend) {
+      var ae = document.activeElement;
+      if (isFillable(ae)) {
+        fillField(ae);
+        if (verifyFill(ae)) { done(); return; }
+      }
+      var cands = collectCandidates(freshSend);
+      var pick = pickCandidate(cands);
+      var fp = function (c) {
+        return c.desc + (c.empty ? "(empty)" : "") + (c.vis ? "" : "(hid)");
+      };
+      if (pick) {
+        fillField(pick.el);
+        if (verifyFill(pick.el)) { done(); return; }
+      }
+      var lab = findToLabelNear(freshSend);
+      if (!lab) {
+        fail("no To label; candidates [" +
+          cands.slice(0, 8).map(fp).join(" | ") + "]");
+        return;
+      }
+      try { lab.click(); } catch (e) {}
+      setTimeout(function () {
+        try {
+          var ae2 = document.activeElement;
+          if (!isFillable(ae2) && lab.parentElement) {
+            try { lab.parentElement.click(); } catch (e) {}
+          }
+          setTimeout(function () {
+            try {
+              var ae3 = document.activeElement;
+              if (!isFillable(ae3)) {
+                fail("To label click focused " +
+                  ((ae3 && ae3.tagName) || "?").toLowerCase());
+                return;
+              }
+              fillField(ae3);
+              if (verifyFill(ae3)) done();
+              else fail("fill missed on focused " +
+                (ae3.tagName || "?").toLowerCase());
+            } catch (e) { fail("exception"); }
+          }, 300);
+        } catch (e) { fail("exception"); }
+      }, 300);
     }
     function fillCompose(sendBefore) {
       var t2 = 0;
@@ -400,37 +458,7 @@
               "\u2192" + sends.length + ")");
             return;
           }
-          var cands = collectCandidates(freshSend);
-          var pick = pickCandidate(cands);
-          var fp = function (c) {
-            return c.desc + (c.empty ? "(empty)" : "") + (c.vis ? "" : "(hid)");
-          };
-          if (pick) {
-            fillField(pick.el);
-            if (verifyFill(pick.el)) { done(); return; }
-            // Fill didn't stick: fall through to the label-click fallback.
-          }
-          // Fallback: click the To label to focus Gmail's recipient widget,
-          // then fill whatever receives focus.
-          var lab = findToLabel(freshSend);
-          if (!lab) {
-            fail("no To label; candidates [" +
-              cands.slice(0, 8).map(fp).join(" | ") + "]");
-            return;
-          }
-          try { lab.click(); } catch (e) {}
-          setTimeout(function () {
-            try {
-              var ae = document.activeElement;
-              if (!ae || ae === document.body) {
-                fail("To label click focused nothing"); return;
-              }
-              fillField(ae);
-              if (verifyFill(ae)) done();
-              else fail("fill missed on focused " +
-                (ae.tagName || "?").toLowerCase());
-            } catch (e) { fail("exception"); }
-          }, 400);
+          addressCompose(freshSend);
         } catch (e) {
           clearInterval(timer2);
           fail("exception");
