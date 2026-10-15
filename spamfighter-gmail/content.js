@@ -27,8 +27,33 @@
   }
 
   function ikParam() {
-    var m = document.documentElement.innerHTML.match(/[?&]ik=([a-f0-9]+)/);
-    return m ? m[1] : null;
+    // Gmail's session key ("ik") is required by its show-original endpoint.
+    // Hunt for it in several places; page markup varies by Gmail version.
+    function scan(text) {
+      if (!text) return null;
+      var m = text.match(/[?&]ik=([a-f0-9]{6,})/) ||
+              text.match(/"ik"\s*:\s*"([a-f0-9]{6,})"/);
+      return m ? m[1] : null;
+    }
+    var found = null;
+    try {
+      // Page-context globals (classic Gmail exposes GLOBALS[9] === ik).
+      // Firefox content scripts reach them via wrappedJSObject.
+      var pg = (typeof wrappedJSObject !== "undefined") ? wrappedJSObject : window;
+      if (pg && pg.GLOBALS && pg.GLOBALS[9] && /^[a-f0-9]{6,}$/.test(pg.GLOBALS[9])) {
+        return String(pg.GLOBALS[9]);
+      }
+    } catch (e) {}
+    try { found = scan(document.documentElement.innerHTML); } catch (e) {}
+    if (found) return found;
+    try {
+      var scripts = document.querySelectorAll("script");
+      for (var i = 0; i < scripts.length; i++) {
+        found = scan(scripts[i].textContent || "");
+        if (found) return found;
+      }
+    } catch (e) {}
+    return null;
   }
 
   function ensureButton() {
@@ -178,28 +203,35 @@
       if (onStep) { try { onStep(s); } catch (e) {} }
     }
 
+    var failures = [];
     function attempt(i) {
       if (i >= urls.length) {
-        throw new Error("Gmail wouldn't hand over the headers " +
-          "(tried " + urls.length + " URL forms).");
+        throw new Error("Gmail wouldn't hand over the headers. " +
+          failures.join("; "));
       }
       step("Fetching full headers (try " + (i + 1) + "/" + urls.length + ")…");
       var p;
       try {
         p = fetch(urls[i], { credentials: "include" });
       } catch (e) {
+        failures.push("try " + (i + 1) + ": couldn't start request");
         return attempt(i + 1);
       }
       return Promise.resolve(p).then(function (res) {
-        if (!res.ok) return attempt(i + 1); // try next form
+        if (!res.ok) {
+          failures.push("try " + (i + 1) + ": HTTP " + res.status);
+          return attempt(i + 1); // try next form
+        }
         return res.text();
       }, function () {
+        failures.push("try " + (i + 1) + ": network error");
         return attempt(i + 1); // network-level fail -> try next form
       }).then(function (html) {
         if (typeof html !== "string") return html; // came from attempt()
         var doc = new DOMParser().parseFromString(html, "text/html");
         var text = doc.body ? doc.body.innerText : "";
         if (text && text.indexOf("Received:") !== -1) return text;
+        failures.push("try " + (i + 1) + ": page had no headers");
         return attempt(i + 1); // wrong page (login/error) -> try next form
       }).catch(function (e) {
         // Normalize to a plain string: Firefox wraps cross-compartment
