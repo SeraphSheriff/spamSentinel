@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.10";
+  var SF_VERSION = "1.0.11";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -216,8 +216,9 @@
         "Report the links below via Google Safe Browsing instead."));
     } else if (a.skipComplaint) {
       body.appendChild(h("p", { "class": "sf-warn" },
-        "This came from a big mailbox provider's own servers \u2014 " +
-        "no complaint generated (it would hit the wrong target)."));
+        a.providerAdvice ||
+        ("This came from a big mailbox provider\u2019s own servers \u2014 " +
+         "no complaint generated (it would hit the wrong target).")));
     }
     var links = h("div", { "class": "sf-links" },
       h("b", null, "Also report it: "));

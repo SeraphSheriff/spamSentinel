@@ -212,6 +212,35 @@
     });
   }
 
+  // When mail genuinely came from a mailbox provider, the header trail
+  // ends there — but the SENDER'S ACCOUNT can still be reported. Tailored
+  // advice per provider; null means use the generic message.
+  function providerAdvice(host) {
+    host = String(host || "").toLowerCase();
+    function has(d) { return host === d || host.endsWith("." + d); }
+    if (has("google.com") || has("googlemail.com")) {
+      return "Sent from a real Gmail account — the header trail ends here. " +
+        "To kill it, report the account itself: in Gmail, open the \u22EE menu " +
+        "on this message and choose \u201CReport phishing\u201D.";
+    }
+    if (has("outlook.com") || has("hotmail.com") || has("live.com") ||
+        has("msn.com") || has("protection.outlook.com")) {
+      return "Sent from a real Microsoft account — the header trail ends here. " +
+        "In Outlook, select the message and use Report \u2192 Report phishing " +
+        "to flag the account.";
+    }
+    if (has("yahoo.com") || has("aol.com")) {
+      return "Sent from a real Yahoo/AOL account — the header trail ends here. " +
+        "Use your mail app's \u201CReport phishing\u201D option to flag the " +
+        "sender's account.";
+    }
+    if (has("icloud.com") || has("me.com") || has("mac.com")) {
+      return "Sent from a real iCloud account — the header trail ends here. " +
+        "Forward it to reportphishing@apple.com to flag the account.";
+    }
+    return null;
+  }
+
   function stripTags(html) {
     return String(html)
       .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, " $1 ")
@@ -400,6 +429,7 @@
     }).then(function (host) {
       a.host = host;
       a.skipComplaint = whitelisted(host);
+      a.providerAdvice = a.skipComplaint ? providerAdvice(host) : null;
       var c = buildComplaint(a);
       a.complaint = c;
       a.stage = "done";
@@ -411,6 +441,7 @@
     parseHeaders: parseHeaders, originIp: originIp, isPrivateIp: isPrivateIp,
     analyze: analyze, investigate: investigate, buildComplaint: buildComplaint,
     extractAbuse: extractAbuse, extractOrg: extractOrg, whitelisted: whitelisted,
+    providerAdvice: providerAdvice,
     redFlags: redFlags, RDAP_BASES: RDAP_BASES
   };
 
