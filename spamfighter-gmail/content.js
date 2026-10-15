@@ -153,19 +153,49 @@
 
   function fetchOriginal(mid) {
     var ik = ikParam();
-    var base = "https://mail.google.com/mail/u/" + accountIndex() + "/?ui=2&view=om&th=" + encodeURIComponent(mid);
-    var url = ik ? base + "&ik=" + ik : base;
-    return fetch(url, { credentials: "include" }).then(function (res) {
-      if (!res.ok) throw new Error("Gmail returned " + res.status);
-      return res.text();
-    }).then(function (html) {
-      var doc = new DOMParser().parseFromString(html, "text/html");
-      var text = doc.body ? doc.body.innerText : "";
-      if (!text || text.indexOf("Received:") === -1) {
-        throw new Error("Couldn't read the message headers.");
+    var acct = accountIndex();
+    var urls = [];
+    if (ik) {
+      urls.push("https://mail.google.com/mail/u/" + acct + "/?ui=2&ik=" + ik +
+        "&view=om&th=" + encodeURIComponent(mid));
+    }
+    urls.push("https://mail.google.com/mail/u/" + acct + "/?ui=2&view=om&th=" +
+      encodeURIComponent(mid));
+    urls.push("https://mail.google.com/mail/u/" + acct + "/?view=om&th=" +
+      encodeURIComponent(mid));
+
+    function cleanErr(e) {
+      try {
+        if (e && e.message) return String(e.message);
+        return String(e);
+      } catch (x) {
+        return "unknown error";
       }
-      return text;
-    });
+    }
+
+    function attempt(i) {
+      if (i >= urls.length) {
+        throw new Error("Gmail wouldn't hand over the headers " +
+          "(tried " + urls.length + " URL forms).");
+      }
+      return fetch(urls[i], { credentials: "include" }).then(function (res) {
+        if (!res.ok) return attempt(i + 1); // try next form
+        return res.text();
+      }, function () {
+        return attempt(i + 1); // network-level fail -> try next form
+      }).then(function (html) {
+        if (typeof html !== "string") return html; // came from attempt()
+        var doc = new DOMParser().parseFromString(html, "text/html");
+        var text = doc.body ? doc.body.innerText : "";
+        if (text && text.indexOf("Received:") !== -1) return text;
+        return attempt(i + 1); // wrong page (login/error) -> try next form
+      }).catch(function (e) {
+        // Normalize to a plain string: Firefox wraps cross-compartment
+        // rejection values in an unreadable wrapper otherwise.
+        throw new Error(cleanErr(e));
+      });
+    }
+    return attempt(0);
   }
 
   function onShieldClick() {
