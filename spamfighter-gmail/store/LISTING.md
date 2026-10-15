@@ -1,0 +1,66 @@
+# Store listing copy — Spamfighter for Gmail v1.0.3
+
+## Both stores
+
+**Name:** Spamfighter for Gmail
+
+**Summary / short description:**
+One click traces who really sent a spam email and writes the abuse
+complaint for you. Free, no account, nothing sent automatically.
+
+**Category:** Productivity
+**Language:** English
+**Privacy policy URL:**
+https://github.com/SeraphSheriff/spamSentinel/blob/main/spamfighter-gmail/PRIVACY.md
+**Homepage / support:**
+https://github.com/SeraphSheriff/spamSentinel/tree/main/spamfighter-gmail
+
+## Full description
+
+Spam is the front door to scam. Every phishing email starts with a
+spam email landing in your inbox — now you can hit back.
+
+Open any spam email in Gmail and click the red shield. Spamfighter:
+
+- Reads the email's full headers and walks the chain to the
+  **originating IP** — the server that actually sent it. The "From"
+  address is makeup; the IP is the face underneath.
+- Looks up who owns that IP and finds their **abuse contact**.
+- Writes a **ready-to-send complaint** naming the IP, the sender,
+  the links, and the evidence. Copy it or open it pre-addressed
+  in Gmail — you review and send every complaint yourself.
+- Flags the classic scam tells: throwaway domains, redirector links,
+  pressure tactics, "verify your account" phishing, gift-card bait.
+
+It won't generate complaints against the big mailbox providers' own
+servers (their IPs appear in your own mail's headers too) — it tells
+you when that's the case instead of hitting the wrong target.
+
+No accounts. No configuration. No tracking. Everything runs in your
+browser; the only lookups are public records about the *spammer's* IP.
+Free forever.
+
+## Screenshots (in store/)
+
+1. `screenshot-1-shield.png` (1280x800) — "Open any spam email — the
+   red shield appears."
+2. `screenshot-2-results.png` (1280x800) — "One click: the real sender,
+   the abuse contact, the complaint."
+3. `promo-tile-440x280.png` — small promo tile (Chrome Web Store).
+
+## Upload steps — Firefox (free)
+
+1. Go to https://addons.mozilla.org/developers/ and sign in with a
+   Firefox account (free).
+2. Submit a New Add-on → upload `spamfighter-gmail-v1.0.3.zip`.
+3. Fill in the listing using the copy above; attach the screenshots.
+4. Submit for review (usually 1–2 days for a simple extension).
+
+## Upload steps — Chrome Web Store ($5 one-time)
+
+1. Go to https://chrome.google.com/webstore/devconsole and pay the
+   one-time $5 developer registration fee.
+2. New Item → upload `spamfighter-gmail-v1.0.3.zip`.
+3. Fill in the listing using the copy above; attach screenshots +
+   the 440x280 promo tile; paste the privacy policy URL.
+4. Submit for review (a few days for new developers).
