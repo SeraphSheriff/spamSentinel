@@ -19,7 +19,7 @@
   var PROVIDER_WHITELIST = [
     "google.com", "googlemail.com", "outlook.com", "hotmail.com",
     "live.com", "microsoft.com", "yahoo.com", "aol.com", "icloud.com",
-    "me.com", "mac.com", "proton.me", "protonmail.com", "zoho.com"
+    "me.com", "mac.com", "apple.com", "proton.me", "protonmail.com", "zoho.com"
   ];
 
   var SKETCHY_TLDS = ["shop", "top", "xyz", "click", "buzz", "lol", "gdn",
@@ -70,24 +70,39 @@
   }
 
   // First public IPv4 in the oldest Received header (ingress hop).
+  // Tries bracketed IPs first (highest confidence), then bare IPs.
   function originIp(headers) {
     var recvd = getAll(headers, "received");
-    var pat = /\[(\d{1,3}(?:\.\d{1,3}){3})\]/g;
-    var cands = [];
-    var m;
-    if (recvd.length) {
-      while ((m = pat.exec(recvd[recvd.length - 1]))) cands.push(m[1]);
-    }
-    if (!cands.length) {
-      recvd.forEach(function (h) {
-        pat.lastIndex = 0;
-        while ((m = pat.exec(h))) cands.push(m[1]);
+    var bracketPat = /\[(\d{1,3}(?:\.\d{1,3}){3})\]/g;
+    var barePat = /(?:^|[^0-9.])([0-9]{1,3}(?:\.[0-9]{1,3}){3})(?![0-9.])/g;
+    function validIp(ip) {
+      var parts = String(ip).split(".");
+      if (parts.length !== 4) return false;
+      return parts.every(function (p) {
+        return /^\d{1,3}$/.test(p) && parseInt(p, 10) <= 255;
       });
     }
-    for (var i = 0; i < cands.length; i++) {
-      if (!isPrivateIp(cands[i])) return cands[i];
+    function candsFrom(text, pat) {
+      var cands = [], m;
+      pat.lastIndex = 0;
+      while ((m = pat.exec(text))) {
+        if (validIp(m[1]) && !isPrivateIp(m[1])) cands.push(m[1]);
+      }
+      return cands;
     }
-    return null;
+    function sweep(pat) {
+      var cands = [];
+      if (recvd.length) {
+        cands = candsFrom(recvd[recvd.length - 1], pat);
+      }
+      for (var i = 0; i < recvd.length && !cands.length; i++) {
+        cands = candsFrom(recvd[i], pat);
+      }
+      return cands;
+    }
+    var cands = sweep(bracketPat);
+    if (!cands.length) cands = sweep(barePat);
+    return cands.length ? cands[0] : null;
   }
 
   function fetchJson(url, timeoutMs) {
@@ -197,6 +212,35 @@
     });
   }
 
+  // When mail genuinely came from a mailbox provider, the header trail
+  // ends there — but the SENDER'S ACCOUNT can still be reported. Tailored
+  // advice per provider; null means use the generic message.
+  function providerAdvice(host) {
+    host = String(host || "").toLowerCase();
+    function has(d) { return host === d || host.endsWith("." + d); }
+    if (has("google.com") || has("googlemail.com")) {
+      return "Sent from a real Gmail account — the header trail ends here. " +
+        "To kill it, report the account itself: in Gmail, open the \u22EE menu " +
+        "on this message and choose \u201CReport phishing\u201D.";
+    }
+    if (has("outlook.com") || has("hotmail.com") || has("live.com") ||
+        has("msn.com") || has("protection.outlook.com")) {
+      return "Sent from a real Microsoft account — the header trail ends here. " +
+        "In Outlook, select the message and use Report \u2192 Report phishing " +
+        "to flag the account.";
+    }
+    if (has("yahoo.com") || has("aol.com")) {
+      return "Sent from a real Yahoo/AOL account — the header trail ends here. " +
+        "Use your mail app's \u201CReport phishing\u201D option to flag the " +
+        "sender's account.";
+    }
+    if (has("icloud.com") || has("me.com") || has("mac.com") || has("apple.com")) {
+      return "Sent from a real iCloud account — the header trail ends here. " +
+        "Forward it to reportphishing@apple.com to flag the account.";
+    }
+    return null;
+  }
+
   function stripTags(html) {
     return String(html)
       .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, " $1 ")
@@ -211,7 +255,7 @@
     var m;
     URL_RE.lastIndex = 0;
     while ((m = URL_RE.exec(text))) {
-      var u = m[0].replace(/[.,;!)\]}"']+$/, "");
+      var u = m[0].replace(/[.,;!)\]}"'=]+$/, "");
       if (u && urls.indexOf(u) === -1 && urls.length < 20) urls.push(u);
     }
     return urls;
@@ -309,9 +353,48 @@
       });
   }
 
+  // Decode quoted-printable body text (soft breaks + =XX escapes).
+  function decodeQP(text) {
+    return String(text || "")
+      .replace(/=\r?\n/g, "")
+      .replace(/=([0-9A-Fa-f]{2})/g, function (m, hex) {
+        return String.fromCharCode(parseInt(hex, 16));
+      });
+  }
+
+  function decodeBody(bodyText, headers) {
+    var cte = getFirst(headers, "content-transfer-encoding").toLowerCase();
+    var t = String(bodyText || "");
+    try {
+      if (cte.indexOf("base64") !== -1 && t.length > 100) {
+        var bin = atob(t.replace(/\s+/g, ""));
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder("utf-8").decode(bytes);
+      }
+    } catch (e) {}
+    if (cte.indexOf("quoted-printable") !== -1 || /=[0-9A-Fa-f]{2}/.test(t)) {
+      try { return decodeQP(t); } catch (e) {}
+    }
+    return t;
+  }
+
+  // The Received header the traced IP actually came from (best evidence).
+  function evidenceHeader(headers, ip) {
+    var recvd = getAll(headers, "received");
+    if (!ip || !recvd.length) {
+      return recvd.length ? recvd[recvd.length - 1].slice(0, 300) : null;
+    }
+    for (var i = recvd.length - 1; i >= 0; i--) {
+      if (recvd[i].indexOf(ip) !== -1) return recvd[i].slice(0, 300);
+    }
+    return recvd[recvd.length - 1].slice(0, 300);
+  }
+
   function analyze(rawText) {
     var headers = parseHeaders(rawText);
     var bodyText = String(rawText).split(/\r?\n\r?\n/).slice(1).join("\n\n");
+    bodyText = decodeBody(bodyText, headers);
     var text = stripTags(bodyText).slice(0, 100000);
     var from = decodeMimeWords(getFirst(headers, "from"));
     var subject = decodeMimeWords(getFirst(headers, "subject"));
@@ -320,12 +403,11 @@
     var urls = extractUrls(bodyText + " " + text);
     var ip = originIp(headers);
     var rf = redFlags(from, urls, text);
-    var recvd = getAll(headers, "received");
     return {
       from: from, subject: subject, date: date, messageId: messageId,
       ip: ip, urls: urls, urlHosts: rf.urlHosts, senderDomain: rf.senderDomain,
       flags: rf.flags,
-      ingressReceived: recvd.length ? recvd[recvd.length - 1].slice(0, 300) : null,
+      ingressReceived: evidenceHeader(headers, ip),
       bodyPreview: text.slice(0, 1500)
     };
   }
@@ -347,6 +429,7 @@
     }).then(function (host) {
       a.host = host;
       a.skipComplaint = whitelisted(host);
+      a.providerAdvice = a.skipComplaint ? providerAdvice(host) : null;
       var c = buildComplaint(a);
       a.complaint = c;
       a.stage = "done";
@@ -358,6 +441,7 @@
     parseHeaders: parseHeaders, originIp: originIp, isPrivateIp: isPrivateIp,
     analyze: analyze, investigate: investigate, buildComplaint: buildComplaint,
     extractAbuse: extractAbuse, extractOrg: extractOrg, whitelisted: whitelisted,
+    providerAdvice: providerAdvice,
     redFlags: redFlags, RDAP_BASES: RDAP_BASES
   };
 
