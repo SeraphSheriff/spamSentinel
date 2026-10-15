@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.13";
+  var SF_VERSION = "1.0.14";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -123,27 +123,42 @@
 
   // Drives Gmail's own "Report phishing" flow for the open message:
   // opens the message's three-dot menu and clicks the menu item.
-  // Returns true if the attempt started; Gmail still asks the user
-  // to confirm, so nothing is reported without their say-so.
+  // Returns {ok, dbg}; Gmail still asks the user to confirm, so nothing
+  // is reported without their say-so.
   function gmailReportPhishing() {
+    function fail(dbg) { return { ok: false, dbg: dbg }; }
     try {
       var msgEl = document.querySelector("[data-legacy-message-id]");
-      if (!msgEl) return false;
-      // Walk up from the message to find its own "More" menu button
-      // (not the top toolbar's).
+      if (!msgEl) return fail("no message element");
+      var inDoc = document.querySelectorAll('[aria-label="More"]').length;
       var more = null, root = msgEl;
-      while (root && root !== document.body) {
-        var m = root.querySelector('[aria-label="More"]');
-        if (m) { more = m; break; }
+      var labels = ["More", "More options"];
+      while (root && root !== document.body && !more) {
+        for (var l = 0; l < labels.length; l++) {
+          more = root.querySelector('[aria-label="' + labels[l] + '"]');
+          if (more) break;
+        }
         root = root.parentElement;
       }
-      if (!more) return false;
+      if (!more) {
+        // Diagnostics: button labels near the message, so the selector
+        // can be fixed to match this Gmail layout.
+        var seen = [], seenSet = {}, scope = msgEl, u, i, al;
+        for (u = 0; u < 4 && scope; u++) scope = scope.parentElement;
+        var btns = (scope || document).querySelectorAll("button,[role=button]");
+        for (i = 0; i < btns.length && seen.length < 10; i++) {
+          al = btns[i].getAttribute("aria-label");
+          if (al && !seenSet[al]) { seenSet[al] = 1; seen.push(al); }
+        }
+        return fail("More buttons in page: " + inDoc +
+          "; nearby: " + seen.join(" / "));
+      }
       more.click();
       var tries = 0;
       var timer = setInterval(function () {
         tries++;
         var items = document.querySelectorAll(
-          '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]');
+          '[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]');
         for (var i = 0; i < items.length; i++) {
           if ((items[i].textContent || "").trim().toLowerCase() === "report phishing") {
             clearInterval(timer);
@@ -153,9 +168,9 @@
         }
         if (tries > 25) clearInterval(timer); // ~5s: give up quietly
       }, 200);
-      return true;
+      return { ok: true };
     } catch (e) {
-      return false;
+      return fail("exception");
     }
   }
 
@@ -261,12 +276,13 @@
         var rb = h("button", { id: "sf-report-phish" },
           "Report phishing to Google");
         rb.addEventListener("click", function () {
-          if (gmailReportPhishing()) {
+          var r = gmailReportPhishing();
+          rb.disabled = true;
+          if (r.ok) {
             rb.textContent = "Opening Gmail\u2019s report dialog\u2026";
-            rb.disabled = true;
           } else {
-            rb.textContent = "Couldn\u2019t open it \u2014 use the three-dot menu manually";
-            rb.disabled = true;
+            rb.textContent = "Couldn't open it (" + String(r.dbg).slice(0, 140) +
+              ") \u2014 use the three-dot menu manually";
           }
         });
         body.appendChild(h("div", { "class": "sf-actions" }, rb));
