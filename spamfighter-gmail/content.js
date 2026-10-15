@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.15";
+  var SF_VERSION = "1.0.16";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -174,6 +174,79 @@
     }
   }
 
+  // Forward-to addresses for phishing intake (industry + government).
+  var SF_FWD_TO = ["reportphishing@apwg.org", "report@cisa.gov"];
+
+  // Opens Gmail's native Forward for the open message and prefills the To
+  // field with the APWG + CISA intake addresses. The user reviews the
+  // forward and hits Send themselves. Updates the panel button directly.
+  function gmailForwardPhish() {
+    var rb = document.getElementById("sf-fwd-phish");
+    function fail(dbg) {
+      if (rb) {
+        rb.disabled = true;
+        rb.textContent = "Couldn't open forward (" + String(dbg).slice(0, 100) +
+          ") \u2014 forward it manually";
+      }
+      return { ok: false, dbg: dbg };
+    }
+    function done() {
+      if (rb) rb.textContent = "Forward addressed \u2014 review and hit Send";
+      return { ok: true };
+    }
+    try {
+      var msgEl = document.querySelector("[data-legacy-message-id]");
+      if (!msgEl) return fail("no message element");
+      var fwd = null, root = msgEl;
+      while (root && root !== document.body && !fwd) {
+        fwd = root.querySelector('[aria-label="Forward"]');
+        root = root.parentElement;
+      }
+      if (!fwd) return fail("no Forward button");
+      var before = Array.prototype.slice.call(
+        document.querySelectorAll('textarea[name="to"]'));
+      if (rb) { rb.disabled = true; rb.textContent = "Opening forward\u2026"; }
+      fwd.click();
+      var tries = 0;
+      var timer = setInterval(function () {
+        try {
+          tries++;
+          var now = document.querySelectorAll('textarea[name="to"]');
+          var fresh = null, i;
+          for (i = 0; i < now.length; i++) {
+            if (before.indexOf(now[i]) === -1) { fresh = now[i]; break; }
+          }
+          if (!fresh && tries <= 20) return; // keep waiting (~5s)
+          clearInterval(timer);
+          if (!fresh) {
+            fail("toFields " + before.length + "\u2192" + now.length +
+              ", no new compose");
+            return;
+          }
+          fresh.focus();
+          var v = SF_FWD_TO.join(", ");
+          try {
+            var setter = Object.getOwnPropertyDescriptor(
+              window.HTMLTextAreaElement.prototype, "value").set;
+            if (setter) setter.call(fresh, v); else fresh.value = v;
+          } catch (e) { fresh.value = v; }
+          fresh.dispatchEvent(new Event("input", { bubbles: true }));
+          fresh.dispatchEvent(new KeyboardEvent("keydown",
+            { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+          fresh.dispatchEvent(new KeyboardEvent("keyup",
+            { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+          done();
+        } catch (e) {
+          clearInterval(timer);
+          fail("exception");
+        }
+      }, 250);
+      return { ok: true, pending: true };
+    } catch (e) {
+      return fail("exception");
+    }
+  }
+
   // Builds the panel shell and returns its .sf-body element.
   function showPanel() {
     closePanel();
@@ -299,6 +372,10 @@
       target: "_blank", rel: "noopener"
     }, "Google Safe Browsing"));
     body.appendChild(links);
+    var fwdBtn = h("button", { id: "sf-fwd-phish" },
+      "Forward phish to APWG + CISA");
+    fwdBtn.addEventListener("click", function () { gmailForwardPhish(); });
+    body.appendChild(h("div", { "class": "sf-actions" }, fwdBtn));
     body.appendChild(h("p", { "class": "sf-fine" },
       "Nothing is sent automatically. You review and send the complaint yourself."));
   }
