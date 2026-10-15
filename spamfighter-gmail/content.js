@@ -10,7 +10,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.12";
+  var SF_VERSION = "1.0.13";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -121,6 +121,44 @@
     btn.style.display = messageOpen() ? "flex" : "none";
   }
 
+  // Drives Gmail's own "Report phishing" flow for the open message:
+  // opens the message's three-dot menu and clicks the menu item.
+  // Returns true if the attempt started; Gmail still asks the user
+  // to confirm, so nothing is reported without their say-so.
+  function gmailReportPhishing() {
+    try {
+      var msgEl = document.querySelector("[data-legacy-message-id]");
+      if (!msgEl) return false;
+      // Walk up from the message to find its own "More" menu button
+      // (not the top toolbar's).
+      var more = null, root = msgEl;
+      while (root && root !== document.body) {
+        var m = root.querySelector('[aria-label="More"]');
+        if (m) { more = m; break; }
+        root = root.parentElement;
+      }
+      if (!more) return false;
+      more.click();
+      var tries = 0;
+      var timer = setInterval(function () {
+        tries++;
+        var items = document.querySelectorAll(
+          '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]');
+        for (var i = 0; i < items.length; i++) {
+          if ((items[i].textContent || "").trim().toLowerCase() === "report phishing") {
+            clearInterval(timer);
+            items[i].click();
+            return;
+          }
+        }
+        if (tries > 25) clearInterval(timer); // ~5s: give up quietly
+      }, 200);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Builds the panel shell and returns its .sf-body element.
   function showPanel() {
     closePanel();
@@ -219,6 +257,20 @@
         a.providerAdvice ||
         ("This came from a big mailbox provider\u2019s own servers \u2014 " +
          "no complaint generated (it would hit the wrong target).")));
+      if (a.gmailAutoReport) {
+        var rb = h("button", { id: "sf-report-phish" },
+          "Report phishing to Google");
+        rb.addEventListener("click", function () {
+          if (gmailReportPhishing()) {
+            rb.textContent = "Opening Gmail\u2019s report dialog\u2026";
+            rb.disabled = true;
+          } else {
+            rb.textContent = "Couldn\u2019t open it \u2014 use the three-dot menu manually";
+            rb.disabled = true;
+          }
+        });
+        body.appendChild(h("div", { "class": "sf-actions" }, rb));
+      }
     }
     var links = h("div", { "class": "sf-links" },
       h("b", null, "Also report it: "));

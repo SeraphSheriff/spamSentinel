@@ -430,6 +430,9 @@
       a.host = host;
       a.skipComplaint = whitelisted(host);
       a.providerAdvice = a.skipComplaint ? providerAdvice(host) : null;
+      // Gmail's report flow can be driven from the page; other providers can't.
+      a.gmailAutoReport = !!(a.skipComplaint &&
+        /google\.com|googlemail\.com/i.test(String(host || "")));
       var c = buildComplaint(a);
       a.complaint = c;
       a.stage = "done";
