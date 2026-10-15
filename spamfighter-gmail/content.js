@@ -7,7 +7,7 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.1";
+  var SF_VERSION = "1.0.2";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
 
@@ -31,7 +31,9 @@
     // Hunt for it in several places; page markup varies by Gmail version.
     function scan(text) {
       if (!text) return null;
+      // Note: innerHTML serializes & as &amp; — match both forms.
       var m = text.match(/[?&]ik=([a-f0-9]{6,})/) ||
+              text.match(/&amp;ik=([a-f0-9]{6,})/) ||
               text.match(/"ik"\s*:\s*"([a-f0-9]{6,})"/);
       return m ? m[1] : null;
     }
