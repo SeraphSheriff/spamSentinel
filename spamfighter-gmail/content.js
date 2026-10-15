@@ -3,13 +3,38 @@
  * open message, runs the analysis, and renders the results panel.
  * Everything runs locally in your browser. The only network calls are
  * RDAP + reverse-DNS lookups of the SPAMMER's IP.
+ *
+ * Note: this file deliberately never uses innerHTML. All dynamic text
+ * goes through textContent, so there is no HTML-injection surface.
  */
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.9";
+  var SF_VERSION = "1.0.10";
   var BTN_ID = "spamfighter-btn";
   var PANEL_ID = "spamfighter-panel";
+
+  // Tiny DOM builder: h("div", {class: "x", id: "y"}, childEl, "text", ...)
+  function h(tag, attrs) {
+    var el = document.createElement(tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        if (k === "class") el.className = attrs[k];
+        else el.setAttribute(k, attrs[k]);
+      }
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c == null || c === false) continue;
+      el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return el;
+  }
+
+  function clearEl(el) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+  }
 
   function accountIndex() {
     var m = location.pathname.match(/\/mail\/u\/(\d+)/);
@@ -31,7 +56,7 @@
     // Hunt for it in several places; page markup varies by Gmail version.
     function scan(text) {
       if (!text) return null;
-      // Note: innerHTML serializes & as &amp; — match both forms.
+      // Note: serialized markup escapes & as &amp; — match both forms.
       var m = text.match(/[?&]ik=([a-f0-9]{6,})/) ||
               text.match(/&amp;ik=([a-f0-9]{6,})/) ||
               text.match(/"ik"\s*:\s*"([a-f0-9]{6,})"/);
@@ -58,18 +83,34 @@
     return null;
   }
 
+  function shieldSvg() {
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "26");
+    svg.setAttribute("height", "26");
+    svg.setAttribute("aria-hidden", "true");
+    var paths = [
+      ["#fff", "M12 2l8 3v6c0 5-3.5 9.3-8 11-4.5-1.7-8-6-8-11V5l8-3z"],
+      ["#c0392b", "M12 4.2l6 2.2v4.9c0 3.9-2.7 7.3-6 8.7-3.3-1.4-6-4.8-6-8.7V6.4l6-2.2z"],
+      ["#fff", "M13.2 6.5l-4.9 5.2 2.1 2.1 2.8-3 3.4 4.2 2-1.6-5.4-6.9z"]
+    ];
+    paths.forEach(function (pd) {
+      var p = document.createElementNS(NS, "path");
+      p.setAttribute("fill", pd[0]);
+      p.setAttribute("d", pd[1]);
+      svg.appendChild(p);
+    });
+    return svg;
+  }
+
   function ensureButton() {
     if (document.getElementById(BTN_ID)) return;
     var btn = document.createElement("button");
     btn.id = BTN_ID;
     btn.title = "Spamfighter: trace who really sent this email";
     btn.setAttribute("aria-label", btn.title);
-    btn.innerHTML =
-      '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">' +
-      '<path fill="#fff" d="M12 2l8 3v6c0 5-3.5 9.3-8 11-4.5-1.7-8-6-8-11V5l8-3z"/>' +
-      '<path fill="#c0392b" d="M12 4.2l6 2.2v4.9c0 3.9-2.7 7.3-6 8.7-3.3-1.4-6-4.8-6-8.7V6.4l6-2.2z"/>' +
-      '<path fill="#fff" d="M13.2 6.5l-4.9 5.2 2.1 2.1 2.8-3 3.4 4.2 2-1.6-5.4-6.9z"/>' +
-      "</svg>";
+    btn.appendChild(shieldSvg());
     btn.addEventListener("click", onShieldClick);
     document.body.appendChild(btn);
   }
@@ -80,18 +121,23 @@
     btn.style.display = messageOpen() ? "flex" : "none";
   }
 
-  function showPanel(html) {
+  // Builds the panel shell and returns its .sf-body element.
+  function showPanel() {
     closePanel();
     var wrap = document.createElement("div");
     wrap.id = PANEL_ID;
-    wrap.innerHTML =
-      '<div class="sf-card">' +
-      '<div class="sf-head"><span>🛡️ Spamfighter</span>' +
-      '<button class="sf-x" aria-label="Close">✕</button></div>' +
-      '<div class="sf-body">' + html + "</div></div>";
-    wrap.querySelector(".sf-x").addEventListener("click", closePanel);
+    var card = h("div", { "class": "sf-card" });
+    var head = h("div", { "class": "sf-head" },
+      h("span", null, "\uD83D\uDEE1\uFE0F Spamfighter"));
+    var x = h("button", { "class": "sf-x", "aria-label": "Close" }, "\u2715");
+    x.addEventListener("click", closePanel);
+    head.appendChild(x);
+    var body = h("div", { "class": "sf-body" });
+    card.appendChild(head);
+    card.appendChild(body);
+    wrap.appendChild(card);
     document.body.appendChild(wrap);
-    return wrap.querySelector(".sf-body");
+    return body;
   }
 
   function closePanel() {
@@ -99,77 +145,64 @@
     if (p) p.remove();
   }
 
-  function esc(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  function mkRow(label, value, mono) {
+    return h("div", { "class": "sf-row" },
+      h("span", null, label),
+      h("b", mono ? { "class": "sf-mono" } : null, String(value)));
   }
 
   function renderLoading(body, step) {
-    body.innerHTML =
-      '<div class="sf-loading"><div class="sf-spin"></div>' +
-      "<p>" + esc(step || "Working…") + "</p></div>";
+    clearEl(body);
+    body.appendChild(
+      h("div", { "class": "sf-loading" },
+        h("div", { "class": "sf-spin" }),
+        h("p", null, step || "Working\u2026")));
   }
 
   function renderResult(body, a) {
-    var h = "";
-    h += '<div class="sf-row"><span>From</span><b>' + esc(a.from || "unknown") + "</b></div>";
-    h += '<div class="sf-row"><span>Subject</span><b>' + esc(a.subject || "(no subject)") + "</b></div>";
+    clearEl(body);
+    body.appendChild(mkRow("From", a.from || "unknown"));
+    body.appendChild(mkRow("Subject", a.subject || "(no subject)"));
     if (!a.ip) {
-      h += '<p class="sf-warn">Couldn\'t find the sending server in the headers. ' +
+      body.appendChild(h("p", { "class": "sf-warn" },
+        "Couldn't find the sending server in the headers. " +
         "That happens with mailing lists, forwards, and some bulk senders. " +
-        "Nothing to complain to directly — but the report links below still apply.</p>";
+        "Nothing to complain to directly \u2014 but the report links below still apply."));
     } else {
-      h += '<div class="sf-row"><span>Sending IP</span><b class="sf-mono">' + esc(a.ip) + "</b></div>";
-      h += '<div class="sf-row"><span>Server</span><b>' + esc(a.host || "unknown") + "</b></div>";
-      h += '<div class="sf-row"><span>Owned by</span><b>' + esc(a.org || "unknown") + "</b></div>";
-      h += '<div class="sf-row"><span>Abuse contact</span><b>' +
-        esc(a.abuse || "not published") + "</b></div>";
-      h += '<p class="sf-note">The "From" address is makeup. The IP is the face underneath.</p>';
+      body.appendChild(mkRow("Sending IP", a.ip, true));
+      body.appendChild(mkRow("Server", a.host || "unknown"));
+      body.appendChild(mkRow("Owned by", a.org || "unknown"));
+      body.appendChild(mkRow("Abuse contact", a.abuse || "not published"));
+      body.appendChild(h("p", { "class": "sf-note" },
+        'The "From" address is makeup. The IP is the face underneath.'));
     }
     if (a.flags && a.flags.length) {
-      h += '<div class="sf-flags"><b>Red flags</b><ul>' +
-        a.flags.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") +
-        "</ul></div>";
+      var fw = h("div", { "class": "sf-flags" }, h("b", null, "Red flags"));
+      var ul = h("ul");
+      a.flags.forEach(function (f) { ul.appendChild(h("li", null, f)); });
+      fw.appendChild(ul);
+      body.appendChild(fw);
     }
     if (a.complaint) {
       var c = a.complaint;
-      h += '<div class="sf-complaint"><b>Ready-to-send complaint</b>' +
-        '<textarea readonly id="sf-complaint-text">' + esc(
-          "To: " + c.to + "\nSubject: " + c.subject + "\n\n" + c.body
-        ) + "</textarea>" +
-        '<div class="sf-actions">' +
-        '<button id="sf-copy">Copy complaint</button>' +
-        '<button id="sf-compose">Open in Gmail</button>' +
-        "</div></div>";
-    } else if (a.ip && !a.skipComplaint) {
-      h += '<p class="sf-warn">No published abuse contact for this IP. ' +
-        "Report the links below via Google Safe Browsing instead.</p>";
-    } else if (a.skipComplaint) {
-      h += '<p class="sf-warn">This came from a big mailbox provider\'s own servers — ' +
-        "no complaint generated (it would hit the wrong target).</p>";
-    }
-    h += '<div class="sf-links"><b>Also report it:</b> ' +
-      '<a href="https://reportfraud.ftc.gov/" target="_blank" rel="noopener">FTC fraud report</a>' +
-      '<a href="https://safebrowsing.google.com/safebrowsing/report_phish/" target="_blank" rel="noopener">Google Safe Browsing</a></div>';
-    h += '<p class="sf-fine">Nothing is sent automatically. You review and send the complaint yourself.</p>';
-    body.innerHTML = h;
-
-    var copyBtn = body.querySelector("#sf-copy");
-    if (copyBtn) {
+      var cw = h("div", { "class": "sf-complaint" },
+        h("b", null, "Ready-to-send complaint"));
+      var ta = h("textarea", { id: "sf-complaint-text" });
+      ta.readOnly = true;
+      ta.value = "To: " + c.to + "\nSubject: " + c.subject + "\n\n" + c.body;
+      cw.appendChild(ta);
+      var copyBtn = h("button", { id: "sf-copy" }, "Copy complaint");
+      var compBtn = h("button", { id: "sf-compose" }, "Open in Gmail");
+      cw.appendChild(h("div", { "class": "sf-actions" }, copyBtn, compBtn));
+      body.appendChild(cw);
       copyBtn.addEventListener("click", function () {
-        var ta = body.querySelector("#sf-complaint-text");
         ta.select();
         try { document.execCommand("copy"); } catch (e) {}
         if (navigator.clipboard) navigator.clipboard.writeText(ta.value).catch(function () {});
         copyBtn.textContent = "Copied!";
         setTimeout(function () { copyBtn.textContent = "Copy complaint"; }, 1500);
       });
-    }
-    var compBtn = body.querySelector("#sf-compose");
-    if (compBtn && a.complaint) {
       compBtn.addEventListener("click", function () {
-        var c = a.complaint;
         var url = "https://mail.google.com/mail/u/" + accountIndex() +
           "/?view=cm&fs=1" +
           "&to=" + encodeURIComponent(c.to) +
@@ -177,7 +210,28 @@
           "&body=" + encodeURIComponent(c.body);
         window.open(url, "_blank", "noopener");
       });
+    } else if (a.ip && !a.skipComplaint) {
+      body.appendChild(h("p", { "class": "sf-warn" },
+        "No published abuse contact for this IP. " +
+        "Report the links below via Google Safe Browsing instead."));
+    } else if (a.skipComplaint) {
+      body.appendChild(h("p", { "class": "sf-warn" },
+        "This came from a big mailbox provider's own servers \u2014 " +
+        "no complaint generated (it would hit the wrong target)."));
     }
+    var links = h("div", { "class": "sf-links" },
+      h("b", null, "Also report it: "));
+    links.appendChild(h("a", {
+      href: "https://reportfraud.ftc.gov/", target: "_blank", rel: "noopener"
+    }, "FTC fraud report"));
+    links.appendChild(document.createTextNode(" "));
+    links.appendChild(h("a", {
+      href: "https://safebrowsing.google.com/safebrowsing/report_phish/",
+      target: "_blank", rel: "noopener"
+    }, "Google Safe Browsing"));
+    body.appendChild(links);
+    body.appendChild(h("p", { "class": "sf-fine" },
+      "Nothing is sent automatically. You review and send the complaint yourself."));
   }
 
   function fetchOriginal(mid, onStep) {
@@ -212,7 +266,7 @@
         throw new Error("Gmail wouldn't hand over the headers. " +
           failures.join("; "));
       }
-      step("Fetching full headers (try " + (i + 1) + "/" + urls.length + ")…");
+      step("Fetching full headers (try " + (i + 1) + "/" + urls.length + ")\u2026");
       var p;
       try {
         p = fetch(urls[i], { credentials: "include" });
@@ -248,13 +302,14 @@
   function onShieldClick() {
     var mid = currentMessageId();
     if (!mid) {
-      var body0 = showPanel("");
-      body0.innerHTML = '<p class="sf-warn">Open a single email first, then click the shield.</p>';
+      var body0 = showPanel();
+      body0.appendChild(h("p", { "class": "sf-warn" },
+        "Open a single email first, then click the shield."));
       return;
     }
-    var panel = showPanel("");
+    var panel = showPanel();
     function prog(s) { renderLoading(panel, s); }
-    prog("Finding the open message…");
+    prog("Finding the open message\u2026");
     var p;
     try {
       p = fetchOriginal(mid, prog);
@@ -272,9 +327,10 @@
       } catch (x) {
         msg = "unreadable error object";
       }
-      panel.innerHTML = '<p class="sf-warn">Something broke (v' + SF_VERSION +
-        "): " + esc(msg) +
-        '. Try reloading Gmail and clicking the shield again.</p>';
+      clearEl(panel);
+      panel.appendChild(h("p", { "class": "sf-warn" },
+        "Something broke (v" + SF_VERSION + "): " + msg +
+        ". Try reloading Gmail and clicking the shield again."));
     });
   }
 
