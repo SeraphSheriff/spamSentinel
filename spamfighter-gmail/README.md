@@ -38,6 +38,11 @@ That's it. The button only appears when you're looking at an email.
   that go somewhere different from the sender, pressure tactics,
   "verify your account" phishing, gift-card bait, unfilled `{{date}}`
   phish-kit placeholders.
+- Two one-click actions for real phish: **Report phishing to Google**
+  walks Gmail's own report flow (and detects already-reported messages
+  instead of opening a dead menu); **Forward phish to APWG + CISA**
+  opens Gmail's forward with the phish attached, addressed to
+  reportphishing@apwg.org and contact@cisa.dhs.gov — you review and send.
 
 It will **not** generate a complaint against the big mailbox providers'
 own servers (Google, Microsoft, Yahoo, etc.) — their IPs show up in

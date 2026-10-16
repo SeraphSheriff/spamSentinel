@@ -225,7 +225,7 @@
   }
 
   // Forward-to addresses for phishing intake (industry + government).
-  var SF_FWD_TO = ["reportphishing@apwg.org", "report@cisa.gov"];
+  var SF_FWD_TO = ["reportphishing@apwg.org", "contact@cisa.dhs.gov"];
 
   // Opens the message's three-dot menu, clicks its Forward item, then
   // prefills the forward compose's To field with the APWG + CISA intake

@@ -1,4 +1,4 @@
-# Store listing copy — Spamfighter for Gmail v1.0.3
+# Store listing copy — Spamfighter for Gmail v1.0.24
 
 ## Both stores
 
@@ -31,6 +31,13 @@ Open any spam email in Gmail and click the red shield. Spamfighter:
   in Gmail — you review and send every complaint yourself.
 - Flags the classic scam tells: throwaway domains, redirector links,
   pressure tactics, "verify your account" phishing, gift-card bait.
+- **Report phishing to Google** — for real phish (credential theft,
+  brand impersonation), one click walks Gmail's own report flow so
+  the message lands in Google's phishing pipeline. Detects
+  already-reported messages and says so instead of opening a dead menu.
+- **Forward phish to APWG + CISA** — one click opens Gmail's forward
+  with the phish attached, addressed to reportphishing@apwg.org and
+  contact@cisa.dhs.gov, ready for your review and Send.
 
 It won't generate complaints against the big mailbox providers' own
 servers (their IPs appear in your own mail's headers too) — it tells
@@ -46,13 +53,17 @@ Free forever.
    red shield appears."
 2. `screenshot-2-results.png` (1280x800) — "One click: the real sender,
    the abuse contact, the complaint."
+   **TODO before submitting:** refresh this screenshot so it shows the
+   current panel with the two action buttons ("Report phishing to
+   Google" and "Forward phish to APWG + CISA"). The stored image
+   predates the buttons.
 3. `promo-tile-440x280.png` — small promo tile (Chrome Web Store).
 
 ## Upload steps — Firefox (free)
 
 1. Go to https://addons.mozilla.org/developers/ and sign in with a
    Firefox account (free).
-2. Submit a New Add-on → upload `spamfighter-gmail-v1.0.3.zip`.
+2. Submit a New Add-on → upload `spamfighter-gmail-v1.0.24.zip`.
 3. Fill in the listing using the copy above; attach the screenshots.
 4. Submit for review (usually 1–2 days for a simple extension).
 
@@ -60,7 +71,7 @@ Free forever.
 
 1. Go to https://chrome.google.com/webstore/devconsole and pay the
    one-time $5 developer registration fee.
-2. New Item → upload `spamfighter-gmail-v1.0.3.zip`.
+2. New Item → upload `spamfighter-gmail-v1.0.24.zip`.
 3. Fill in the listing using the copy above; attach screenshots +
    the 440x280 promo tile; paste the privacy policy URL.
 4. Submit for review (a few days for new developers).
