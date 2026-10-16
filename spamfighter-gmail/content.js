@@ -608,6 +608,19 @@
       ta.readOnly = true;
       ta.value = "To: " + c.to + "\nSubject: " + c.subject + "\n\n" + c.body;
       cw.appendChild(ta);
+      // Some hosts (OVHcloud, confirmed 2026-10-15) autorespond to emailed
+      // complaints with "use our web form" and never act on the email.
+      // Warn upfront so the user goes straight to the form.
+      if (/ovh/i.test(c.to + " " + (a.org || ""))) {
+        var ovhNote = h("p", { "class": "sf-warn" },
+          "Heads up: this server belongs to OVHcloud, and their abuse desk " +
+          "ignores emailed complaints \u2014 they want their web form instead: ");
+        ovhNote.appendChild(h("a", {
+          href: "https://www.ovhcloud.com/en/abuse/",
+          target: "_blank", rel: "noopener"
+        }, "ovhcloud.com/en/abuse"));
+        cw.appendChild(ovhNote);
+      }
       var copyBtn = h("button", { id: "sf-copy" }, "Copy complaint");
       var compBtn = h("button", { id: "sf-compose" }, "Open in Gmail");
       cw.appendChild(h("div", { "class": "sf-actions" }, copyBtn, compBtn));
