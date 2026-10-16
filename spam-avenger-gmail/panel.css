@@ -1,6 +1,6 @@
-/* Spamfighter for Gmail — floating button + results panel. */
+/* Spam Avenger for Gmail — floating button + results panel. */
 
-#spamfighter-btn {
+#spam-avenger-btn {
   position: fixed;
   right: 22px;
   bottom: 96px;
@@ -17,9 +17,9 @@
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
   transition: transform 0.12s ease;
 }
-#spamfighter-btn:hover { transform: scale(1.08); }
+#spam-avenger-btn:hover { transform: scale(1.08); }
 
-#spamfighter-panel {
+#spam-avenger-panel {
   position: fixed;
   right: 22px;
   bottom: 160px;
@@ -31,7 +31,7 @@
   font-size: 13px;
   color: #202124;
 }
-#spamfighter-panel .sf-card {
+#spam-avenger-panel .sf-card {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
@@ -40,7 +40,7 @@
   flex-direction: column;
   max-height: calc(100vh - 200px);
 }
-#spamfighter-panel .sf-head {
+#spam-avenger-panel .sf-head {
   background: #c0392b;
   color: #fff;
   font-weight: 700;
@@ -50,44 +50,44 @@
   justify-content: space-between;
   align-items: center;
 }
-#spamfighter-panel .sf-x {
+#spam-avenger-panel .sf-x {
   background: none;
   border: none;
   color: #fff;
   font-size: 15px;
   cursor: pointer;
 }
-#spamfighter-panel .sf-body {
+#spam-avenger-panel .sf-body {
   padding: 12px 14px;
   overflow-y: auto;
 }
-#spamfighter-panel .sf-row {
+#spam-avenger-panel .sf-row {
   display: flex;
   gap: 8px;
   margin: 5px 0;
   line-height: 1.35;
 }
-#spamfighter-panel .sf-row span {
+#spam-avenger-panel .sf-row span {
   flex: 0 0 92px;
   color: #5f6368;
 }
-#spamfighter-panel .sf-row b { font-weight: 500; word-break: break-word; }
-#spamfighter-panel .sf-mono { font-family: monospace; }
-#spamfighter-panel .sf-note {
+#spam-avenger-panel .sf-row b { font-weight: 500; word-break: break-word; }
+#spam-avenger-panel .sf-mono { font-family: monospace; }
+#spam-avenger-panel .sf-note {
   background: #fef7e0;
   border-radius: 8px;
   padding: 8px 10px;
   margin: 8px 0;
 }
-#spamfighter-panel .sf-warn {
+#spam-avenger-panel .sf-warn {
   background: #fce8e6;
   border-radius: 8px;
   padding: 8px 10px;
   margin: 8px 0;
 }
-#spamfighter-panel .sf-flags ul { margin: 4px 0 4px 18px; padding: 0; }
-#spamfighter-panel .sf-flags li { margin: 3px 0; }
-#spamfighter-panel .sf-complaint textarea {
+#spam-avenger-panel .sf-flags ul { margin: 4px 0 4px 18px; padding: 0; }
+#spam-avenger-panel .sf-flags li { margin: 3px 0; }
+#spam-avenger-panel .sf-complaint textarea {
   width: 100%;
   height: 130px;
   box-sizing: border-box;
@@ -99,12 +99,12 @@
   margin: 6px 0;
   resize: vertical;
 }
-#spamfighter-panel .sf-actions { display: flex; gap: 8px; margin-bottom: 6px; }
-#spamfighter-panel .sf-actions button,
-#spamfighter-panel .sf-links a {
+#spam-avenger-panel .sf-actions { display: flex; gap: 8px; margin-bottom: 6px; }
+#spam-avenger-panel .sf-actions button,
+#spam-avenger-panel .sf-links a {
   cursor: pointer;
 }
-#spamfighter-panel .sf-actions button {
+#spam-avenger-panel .sf-actions button {
   flex: 1;
   background: #c0392b;
   color: #fff;
@@ -114,17 +114,17 @@
   font-size: 13px;
   font-weight: 600;
 }
-#spamfighter-panel .sf-actions button:hover { background: #a93226; }
-#spamfighter-panel .sf-links { margin-top: 8px; }
-#spamfighter-panel .sf-links a {
+#spam-avenger-panel .sf-actions button:hover { background: #a93226; }
+#spam-avenger-panel .sf-links { margin-top: 8px; }
+#spam-avenger-panel .sf-links a {
   display: inline-block;
   margin: 4px 8px 0 0;
   color: #1a73e8;
   text-decoration: none;
 }
-#spamfighter-panel .sf-fine { color: #5f6368; font-size: 11px; margin-top: 8px; }
-#spamfighter-panel .sf-loading { text-align: center; padding: 18px 0; }
-#spamfighter-panel .sf-spin {
+#spam-avenger-panel .sf-fine { color: #5f6368; font-size: 11px; margin-top: 8px; }
+#spam-avenger-panel .sf-loading { text-align: center; padding: 18px 0; }
+#spam-avenger-panel .sf-spin {
   width: 28px; height: 28px;
   border: 3px solid #f3c1bb;
   border-top-color: #c0392b;

@@ -1,4 +1,4 @@
-/* Spamfighter for Gmail — content script.
+/* Spam Avenger for Gmail — content script.
  * Injects the shield button into Gmail, fetches "show original" for the
  * open message, runs the analysis, and renders the results panel.
  * Everything runs locally in your browser. The only network calls are
@@ -11,8 +11,8 @@
   "use strict";
 
   var SF_VERSION = "1.0.25";
-  var BTN_ID = "spamfighter-btn";
-  var PANEL_ID = "spamfighter-panel";
+  var BTN_ID = "spam-avenger-btn";
+  var PANEL_ID = "spam-avenger-panel";
 
   // Tiny DOM builder: h("div", {class: "x", id: "y"}, childEl, "text", ...)
   function h(tag, attrs) {
@@ -108,7 +108,7 @@
     if (document.getElementById(BTN_ID)) return;
     var btn = document.createElement("button");
     btn.id = BTN_ID;
-    btn.title = "Spamfighter: trace who really sent this email";
+    btn.title = "Spam Avenger: trace who really sent this email";
     btn.setAttribute("aria-label", btn.title);
     btn.appendChild(shieldSvg());
     btn.addEventListener("click", onShieldClick);
@@ -545,7 +545,7 @@
     wrap.id = PANEL_ID;
     var card = h("div", { "class": "sf-card" });
     var head = h("div", { "class": "sf-head" },
-      h("span", null, "\uD83D\uDEE1\uFE0F Spamfighter"));
+      h("span", null, "\uD83D\uDEE1\uFE0F Spam Avenger"));
     var x = h("button", { "class": "sf-x", "aria-label": "Close" }, "\u2715");
     x.addEventListener("click", closePanel);
     head.appendChild(x);
@@ -780,7 +780,7 @@
       p = Promise.reject(e);
     }
     Promise.resolve(p).then(function (raw) {
-      return window.Spamfighter.investigate(raw, prog);
+      return window.SpamAvenger.investigate(raw, prog);
     }).then(function (a) {
       renderResult(panel, a);
     }).catch(function (err) {

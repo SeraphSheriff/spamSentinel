@@ -1,4 +1,4 @@
-# Privacy Policy — Spamfighter for Gmail
+# Privacy Policy — Spam Avenger for Gmail
 
 Last updated: October 15, 2026
 

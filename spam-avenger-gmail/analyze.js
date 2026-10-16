@@ -1,4 +1,4 @@
-/* Spamfighter for Gmail — analysis engine.
+/* Spam Avenger for Gmail — analysis engine.
  * Ported from spamfighter.py. No dependencies, no network except
  * RDAP + DNS-over-HTTPS lookups of the SPAMMER's IP.
  * Works in the browser extension and in Node (for tests).
@@ -220,8 +220,8 @@
     function has(d) { return host === d || host.endsWith("." + d); }
     if (has("google.com") || has("googlemail.com")) {
       return "Sent from a real Gmail account — the header trail ends here. " +
-        "To kill it, report the account itself: in Gmail, open the \u22EE menu " +
-        "on this message and choose \u201CReport phishing\u201D.";
+        "To kill it, report the account itself: in Gmail, open the three-dot " +
+        "menu on this message and choose \u201CReport phishing\u201D.";
     }
     if (has("outlook.com") || has("hotmail.com") || has("live.com") ||
         has("msn.com") || has("protection.outlook.com")) {
@@ -430,6 +430,9 @@
       a.host = host;
       a.skipComplaint = whitelisted(host);
       a.providerAdvice = a.skipComplaint ? providerAdvice(host) : null;
+      // Gmail's report flow can be driven from the page; other providers can't.
+      a.gmailAutoReport = !!(a.skipComplaint &&
+        /google\.com|googlemail\.com/i.test(String(host || "")));
       var c = buildComplaint(a);
       a.complaint = c;
       a.stage = "done";
@@ -448,6 +451,6 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api; // Node (tests)
   } else {
-    window.Spamfighter = api; // browser
+    window.SpamAvenger = api; // browser
   }
 })();

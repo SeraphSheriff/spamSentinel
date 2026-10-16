@@ -1,4 +1,4 @@
-# 🛡️ Spamfighter for Gmail
+# 🛡️ Spam Avenger for Gmail
 
 One click traces who **really** sent a spam email and writes the abuse
 complaint for you. The companion to [Spamfighter](../spamfighter/) for
@@ -16,7 +16,7 @@ automatically — you review and send every complaint yourself.
 
 ## Install (2 minutes, one time)
 
-1. Download `spamfighter-gmail.zip` and **unzip** it into a folder.
+1. Download `spam-avenger-gmail.zip` and **unzip** it into a folder.
 2. Open `chrome://extensions` (or `edge://extensions`).
 3. Turn on **Developer mode** (toggle, top-right).
 4. Click **Load unpacked** and select the unzipped folder.
@@ -84,7 +84,7 @@ are never touched, uploaded, or sent anywhere.
 
 Same fight, three weapons:
 
-| | Spamfighter | Spamfighter for Gmail | spamSentinel |
+| | Spamfighter | Spam Avenger for Gmail | spamSentinel |
 |---|---|---|---|
 | Who | Anyone with a PC | Gmail users | cPanel server owners |
 | How | Save .eml files, double-click | One click in Gmail | Automatic server-side |

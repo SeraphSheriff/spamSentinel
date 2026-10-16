@@ -1,8 +1,8 @@
-# Store listing copy — Spamfighter for Gmail v1.0.24
+# Store listing copy — Spam Avenger for Gmail v1.0.28
 
 ## Both stores
 
-**Name:** Spamfighter for Gmail
+**Name:** Spam Avenger for Gmail
 
 **Summary / short description:**
 One click traces who really sent a spam email and writes the abuse
@@ -11,16 +11,16 @@ complaint for you. Free, no account, nothing sent automatically.
 **Category:** Productivity
 **Language:** English
 **Privacy policy URL:**
-https://github.com/SeraphSheriff/spamSentinel/blob/main/spamfighter-gmail/PRIVACY.md
+https://github.com/SeraphSheriff/spamSentinel/blob/main/spam-avenger-gmail/PRIVACY.md
 **Homepage / support:**
-https://github.com/SeraphSheriff/spamSentinel/tree/main/spamfighter-gmail
+https://github.com/SeraphSheriff/spamSentinel/tree/main/spam-avenger-gmail
 
 ## Full description
 
 Spam is the front door to scam. Every phishing email starts with a
 spam email landing in your inbox — now you can hit back.
 
-Open any spam email in Gmail and click the red shield. Spamfighter:
+Open any spam email in Gmail and click the red shield. Spam Avenger:
 
 - Reads the email's full headers and walks the chain to the
   **originating IP** — the server that actually sent it. The "From"
@@ -63,7 +63,7 @@ Free forever.
 
 1. Go to https://addons.mozilla.org/developers/ and sign in with a
    Firefox account (free).
-2. Submit a New Add-on → upload `spamfighter-gmail-v1.0.24.zip`.
+2. Submit a New Add-on → upload `spam-avenger-gmail-v1.0.28.zip`.
 3. Fill in the listing using the copy above; attach the screenshots.
 4. Submit for review (usually 1–2 days for a simple extension).
 
@@ -71,7 +71,7 @@ Free forever.
 
 1. Go to https://chrome.google.com/webstore/devconsole and pay the
    one-time $5 developer registration fee.
-2. New Item → upload `spamfighter-gmail-v1.0.24.zip`.
+2. New Item → upload `spam-avenger-gmail-v1.0.28.zip`.
 3. Fill in the listing using the copy above; attach screenshots +
    the 440x280 promo tile; paste the privacy policy URL.
 4. Submit for review (a few days for new developers).
