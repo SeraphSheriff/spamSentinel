@@ -6,7 +6,7 @@
 
 **Summary / short description:**
 One click traces who really sent a spam email and writes the abuse
-complaint for you. Free, no account, nothing sent automatically.
+complaint for you. Free, no account — just click, review, send.
 
 **Category:** Productivity
 **Language:** English
