@@ -10,7 +10,19 @@
 (function () {
   "use strict";
 
-  var SF_VERSION = "1.0.25";
+  // v1.0.32: read the version from the manifest so error messages
+  // always tag the build that's actually running. The old hardcoded
+  // "1.0.25" string survived five releases and made a real error
+  // report look like it came from an ancient build.
+  var SF_VERSION = (function () {
+    try {
+      if (typeof chrome !== "undefined" && chrome.runtime &&
+          chrome.runtime.getManifest) {
+        return chrome.runtime.getManifest().version || "unknown";
+      }
+    } catch (e) {}
+    return "unknown";
+  })();
   var BTN_ID = "spam-avenger-btn";
   var PANEL_ID = "spam-avenger-panel";
 
@@ -578,19 +590,55 @@
 
   function renderResult(body, a) {
     clearEl(body);
-    body.appendChild(mkRow("From", a.from || "unknown"));
-    body.appendChild(mkRow("Subject", a.subject || "(no subject)"));
+    // v1.0.36: the info block (meta grid, makeup callout, Red flags)
+    // starts collapsed behind a toggle — good info, but it buries the
+    // action buttons for a non-technical user. The panel opens focused
+    // on the actions; the details are one click away. Every fresh
+    // panel starts collapsed (no stored state). Warnings and errors
+    // are NEVER placed inside the collapsed area.
+    var details = h("div", { "class": "sf-details" });
+    details.style.display = "none";
+    var toggle = h("button", {
+      "class": "sf-details-toggle", "type": "button",
+      "aria-expanded": "false"
+    }, "Show details \u25B8");
+    toggle.addEventListener("click", function () {
+      var open = details.style.display !== "none";
+      details.style.display = open ? "none" : "";
+      toggle.textContent = open ? "Show details \u25B8" : "Hide details \u25BE";
+      toggle.setAttribute("aria-expanded", open ? "false" : "true");
+    });
+    // v1.0.46: the toggle is PINNED in its own bar between the
+    // header and the scrolling .sf-body, not inside the body.
+    // Inside the body it scrolled with the content, and (with the
+    // old bottom-anchored panel) it jumped up/down on every
+    // toggle. Pinned, flipping it changes ONLY the details
+    // container's display, its own label, and aria-expanded: no
+    // re-render, no scroll reset, nothing above the details
+    // block moves. (The panel's top anchor lives in panel.css.)
+    var card = body.parentNode;
+    if (card) {
+      var oldBar = card.querySelector(".sf-togglebar");
+      if (oldBar) oldBar.remove();
+      card.insertBefore(
+        h("div", { "class": "sf-togglebar" }, toggle), body);
+    } else {
+      body.appendChild(toggle); // fallback: pre-1.0.46 placement
+    }
+    body.appendChild(details);
+    details.appendChild(mkRow("From", a.from || "unknown"));
+    details.appendChild(mkRow("Subject", a.subject || "(no subject)"));
     if (!a.ip) {
       body.appendChild(h("p", { "class": "sf-warn" },
         "Couldn't find the sending server in the headers. " +
         "That happens with mailing lists, forwards, and some bulk senders. " +
         "Nothing to complain to directly \u2014 but the report links below still apply."));
     } else {
-      body.appendChild(mkRow("Sending IP", a.ip, true));
-      body.appendChild(mkRow("Server", a.host || "unknown"));
-      body.appendChild(mkRow("Owned by", a.org || "unknown"));
-      body.appendChild(mkRow("Abuse contact", a.abuse || "not published"));
-      body.appendChild(h("p", { "class": "sf-note" },
+      details.appendChild(mkRow("Sending IP", a.ip, true));
+      details.appendChild(mkRow("Server", a.host || "unknown"));
+      details.appendChild(mkRow("Owned by", a.org || "unknown"));
+      details.appendChild(mkRow("Abuse contact", a.abuse || "not published"));
+      details.appendChild(h("p", { "class": "sf-note" },
         'The "From" address is makeup. The IP is the face underneath.'));
     }
     if (a.flags && a.flags.length) {
@@ -598,8 +646,13 @@
       var ul = h("ul");
       a.flags.forEach(function (f) { ul.appendChild(h("li", null, f)); });
       fw.appendChild(ul);
-      body.appendChild(fw);
+      details.appendChild(fw);
     }
+    // v1.0.48: which button colors this render actually puts on
+    // screen — the legend below is built from these flags, so it
+    // never explains a color that isn't there (with no abuse
+    // contact there is no Copy button, hence no orange entry).
+    var showGreen = false, showYellow = false, showOrange = false;
     if (a.complaint) {
       var c = a.complaint;
       var cw = h("div", { "class": "sf-complaint" },
@@ -617,12 +670,18 @@
           "ignores emailed complaints \u2014 they want their web form instead: ");
         ovhNote.appendChild(h("a", {
           href: "https://www.ovhcloud.com/en/abuse/",
+          "class": "sf-ovh-btn",
           target: "_blank", rel: "noopener"
         }, "ovhcloud.com/en/abuse"));
+        showYellow = true; // the OVH form chip is a yellow control
         cw.appendChild(ovhNote);
       }
-      var copyBtn = h("button", { id: "sf-copy" }, "Copy complaint");
-      var compBtn = h("button", { id: "sf-compose" }, "Open in Gmail");
+      var copyBtn = h("button", { id: "sf-copy",
+        "class": "sf-btn-orange" }, "Copy complaint \u2014 paste it into an email");
+      var compBtn = h("button", { id: "sf-compose",
+        "class": "sf-btn-green" }, "Open in Gmail \u2014 just click Send");
+      showOrange = true; // Copy complaint
+      showGreen = true; // Open in Gmail
       cw.appendChild(h("div", { "class": "sf-actions" }, copyBtn, compBtn));
       body.appendChild(cw);
       copyBtn.addEventListener("click", function () {
@@ -630,7 +689,7 @@
         try { document.execCommand("copy"); } catch (e) {}
         if (navigator.clipboard) navigator.clipboard.writeText(ta.value).catch(function () {});
         copyBtn.textContent = "Copied!";
-        setTimeout(function () { copyBtn.textContent = "Copy complaint"; }, 1500);
+        setTimeout(function () { copyBtn.textContent = "Copy complaint \u2014 paste it into an email"; }, 1500);
       });
       compBtn.addEventListener("click", function () {
         var url = "https://mail.google.com/mail/u/" + accountIndex() +
@@ -650,8 +709,9 @@
         ("This came from a big mailbox provider\u2019s own servers \u2014 " +
          "no complaint generated (it would hit the wrong target).")));
       if (a.gmailAutoReport) {
-        var rb = h("button", { id: "sf-report-phish" },
-          "Report phishing to Google");
+        var rb = h("button", { id: "sf-report-phish",
+          "class": "sf-btn-green" }, "Report phishing to Google");
+        showGreen = true;
         rb.addEventListener("click", function () {
           // Already-reported messages show a Gmail banner ("You reported
           // this message as phishing") instead of the report dialog.
@@ -678,19 +738,124 @@
         body.appendChild(h("div", { "class": "sf-actions" }, rb));
       }
     }
+    // v1.0.38: color-code legend, right above the report buttons
+    // and OUTSIDE the collapsed details block, so a first-time
+    // user learns what green/yellow mean before they have to pick.
+    // v1.0.44: orange entry appended — the Copy path has no guide
+    // after the click, so it gets its own color and its own line.
+    // v1.0.48: the legend is built from the show* flags set above,
+    // listing ONLY the colors this render actually uses — with no
+    // abuse contact there is no orange button on screen, so the
+    // orange entry is dropped (the report row below always renders,
+    // so green and yellow are guaranteed by it: FTC is yellow,
+    // Safe Browsing and Forward are green).
+    showGreen = true;
+    showYellow = true;
+    var legend = h("p", { "class": "sf-legend" }, "Button colors: ");
+    var legendEntries = [];
+    if (showGreen) legendEntries.push(["sf-dot-green",
+      " green \u2014 Spam Avenger does the work; you just review and send."]);
+    if (showYellow) legendEntries.push(["sf-dot-yellow",
+      " yellow \u2014 needs a few steps from you, and I'll guide you through them."]);
+    if (showOrange) legendEntries.push(["sf-dot-orange",
+      " orange \u2014 you're on your own with this one; no guide after the click."]);
+    legendEntries.forEach(function (e, i) {
+      legend.appendChild(h("span", { "class": e[0] }, "\u25CF"));
+      legend.appendChild(document.createTextNode(
+        e[1] + (i < legendEntries.length - 1 ? " " : "")));
+    });
+    body.appendChild(legend);
     var links = h("div", { "class": "sf-links" },
       h("b", null, "Also report it: "));
-    links.appendChild(h("a", {
-      href: "https://reportfraud.ftc.gov/", target: "_blank", rel: "noopener"
-    }, "FTC fraud report"));
-    links.appendChild(document.createTextNode(" "));
-    links.appendChild(h("a", {
-      href: "https://safebrowsing.google.com/safebrowsing/report_phish/",
-      target: "_blank", rel: "noopener"
-    }, "Google Safe Browsing"));
     body.appendChild(links);
-    var fwdBtn = h("button", { id: "sf-fwd-phish" },
-      "Forward phish to APWG + CISA");
+    // A status line under the report buttons confirming, in plain
+    // user language, whether the case data was saved for the
+    // report form before the form page opens. (v1.0.31–34 this was
+    // a diagnostic readout with link counts; v1.0.35 made it
+    // user-facing — see the setStashStatus calls below.)
+    var stashStatus = h("p", { "class": "sf-fine", id: "sf-stash-status" },
+      "");
+    function setStashStatus(msg) {
+      try { stashStatus.textContent = msg; } catch (e) {}
+    }
+    // v1.0.30: the report-form links are proper action BUTTONS now.
+    // On click: no default navigation — the handler stashes the case
+    // details in chrome.storage.local and WAITS for the write to land
+    // before opening the form in a new tab, so reportfill.js on the
+    // other side can never beat the stash (the v1.0.29 race: the tab
+    // opened first and the filler found nothing). The stash never
+    // leaves this browser, the filler erases it after use (and
+    // ignores it after 30 minutes), and the user still reviews and
+    // submits every report themselves. If storage is unavailable the
+    // page still opens — a blank form beats a dead button.
+    function stashThenOpen(url) {
+      return function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        var opened = false;
+        function open() {
+          if (opened) return;
+          opened = true;
+          window.open(url, "_blank", "noopener");
+        }
+        try {
+          if (typeof chrome === "undefined" || !chrome.storage ||
+              !chrome.storage.local) {
+            setStashStatus("⚠ Couldn't save the report in this " +
+              "browser — opening the form blank");
+            open();
+            return;
+          }
+          // Safety net: if the set callback somehow never fires, the
+          // button still opens the page instead of feeling dead. In
+          // practice the local write lands in a few ms, long before
+          // this fires, so the stash still wins the ordering.
+          setTimeout(open, 800);
+          chrome.storage.local.set({ pendingReport: {
+            urls: (a.urls || []).slice(0, 10),
+            from: a.from || "",
+            subject: a.subject || "",
+            ip: a.ip || "",
+            server: a.host || "",
+            savedAt: Date.now()
+          } }, function () {
+            // v1.0.31: the v1.0.30 callback never checked lastError,
+            // so a failed write looked exactly like a saved stash.
+            // v1.0.35: the wording is user-facing now — no link
+            // counts or storage jargon, just ready / not ready.
+            if (chrome.runtime && chrome.runtime.lastError) {
+              setStashStatus("⚠ Couldn't save the report — the " +
+                "form will open blank. You can copy the details " +
+                "from this panel and paste them in.");
+            } else {
+              setStashStatus("✓ Report ready — the form opens " +
+                "filled in. Just review and submit.");
+            }
+            open();
+          });
+        } catch (e) {
+          setStashStatus("⚠ Couldn't save the report — " +
+            "opening the form blank");
+          open();
+        }
+      };
+    }
+    // v1.0.34: no deep link into the wizard exists — ReportFraud
+    // is a client-rendered app and its served HTML has no usable
+    // "Report Now" href (checked 2026-10-17) — so the button
+    // opens the homepage and reportfill.js's guide line walks the
+    // user in from there.
+    var ftcBtn = h("button", { id: "sf-report-ftc",
+      "class": "sf-btn-yellow" }, "Report to FTC");
+    ftcBtn.addEventListener("click",
+      stashThenOpen("https://reportfraud.ftc.gov/"));
+    var sbBtn = h("button", { id: "sf-report-sb",
+      "class": "sf-btn-green" }, "Report to Google Safe Browsing");
+    sbBtn.addEventListener("click", stashThenOpen(
+      "https://safebrowsing.google.com/safebrowsing/report_phish/"));
+    body.appendChild(h("div", { "class": "sf-actions" }, ftcBtn, sbBtn));
+    body.appendChild(stashStatus);
+    var fwdBtn = h("button", { id: "sf-fwd-phish",
+      "class": "sf-btn-green" }, "Forward phish to APWG + CISA");
     fwdBtn.addEventListener("click", function () { gmailForwardPhish(); });
     body.appendChild(h("div", { "class": "sf-actions" }, fwdBtn));
     body.appendChild(h("p", { "class": "sf-fine" },
@@ -724,35 +889,103 @@
     }
 
     var failures = [];
+
+    // One candidate view=om URL → Promise<raw string | null>.
+    //
+    // v1.0.33 root cause: Gmail's "show original" page is now just a
+    // summary table (Message ID / From / Subject / SPF…) plus a
+    // "Download Original" link — the message BODY never appears in
+    // the page text, so scraping innerText returned headers-only text
+    // and every link in the body was lost. The raw message lives
+    // behind that page's own Download link, so follow it: fetch the
+    // link's target and use its text verbatim (no DOMParser pass —
+    // it IS the raw message). Only when there is no download link,
+    // or the download fetch fails, fall back to the pre-1.0.33
+    // page-text scrape for this candidate.
+    function fetchCandidate(pageUrl, n) {
+      function note(msg) { failures.push("try " + n + ": " + msg); }
+      var p;
+      try {
+        p = fetch(pageUrl, { credentials: "include" });
+      } catch (e) {
+        note("couldn't start request");
+        return Promise.resolve(null);
+      }
+      return Promise.resolve(p).then(function (res) {
+        if (!res.ok) {
+          note("HTTP " + res.status);
+          return null; // try next form
+        }
+        return res.text();
+      }, function () {
+        note("network error");
+        return null; // network-level fail -> try next form
+      }).then(function (html) {
+        if (typeof html !== "string") return html; // came from note() path
+        var doc = new DOMParser().parseFromString(html, "text/html");
+        // Pre-1.0.33 behavior: the page's visible text, used as a
+        // fallback when the download route isn't available.
+        function fallback() {
+          var text = doc.body ? doc.body.innerText : "";
+          if (text && text.indexOf("Received:") !== -1) return text;
+          note("page had no headers");
+          return null;
+        }
+        // The page's own "Download Original" anchor: match its
+        // visible text, with the download URL shape as a fallback.
+        var anchors = doc.querySelectorAll("a");
+        var dl = null;
+        for (var j = 0; j < anchors.length; j++) {
+          var label = (anchors[j].textContent || "").trim();
+          var href = anchors[j].getAttribute("href") || "";
+          if (/download original/i.test(label) ||
+              href.indexOf("disp=att") !== -1 ||
+              href.indexOf("view=att") !== -1) {
+            dl = anchors[j];
+            break;
+          }
+        }
+        if (!dl) {
+          note("no download link on page");
+          return fallback();
+        }
+        var dlUrl = dl.getAttribute("href") || "";
+        try { dlUrl = new URL(dlUrl, pageUrl).href; } catch (e) {}
+        var dp;
+        try {
+          dp = fetch(dlUrl, { credentials: "include" });
+        } catch (e) {
+          note("download couldn't start");
+          return fallback();
+        }
+        return Promise.resolve(dp).then(function (res2) {
+          if (!res2.ok) {
+            note("download HTTP " + res2.status);
+            return fallback();
+          }
+          return res2.text().then(function (raw) {
+            // The download target is the raw message itself — return
+            // it untouched when it looks like one.
+            if (raw && raw.indexOf("Received:") !== -1) return raw;
+            note("download had no headers");
+            return fallback();
+          });
+        }, function () {
+          note("download network error");
+          return fallback();
+        });
+      });
+    }
+
     function attempt(i) {
       if (i >= urls.length) {
         throw new Error("Gmail wouldn't hand over the headers. " +
           failures.join("; "));
       }
       step("Fetching full headers (try " + (i + 1) + "/" + urls.length + ")\u2026");
-      var p;
-      try {
-        p = fetch(urls[i], { credentials: "include" });
-      } catch (e) {
-        failures.push("try " + (i + 1) + ": couldn't start request");
+      return fetchCandidate(urls[i], i + 1).then(function (raw) {
+        if (raw !== null) return raw;
         return attempt(i + 1);
-      }
-      return Promise.resolve(p).then(function (res) {
-        if (!res.ok) {
-          failures.push("try " + (i + 1) + ": HTTP " + res.status);
-          return attempt(i + 1); // try next form
-        }
-        return res.text();
-      }, function () {
-        failures.push("try " + (i + 1) + ": network error");
-        return attempt(i + 1); // network-level fail -> try next form
-      }).then(function (html) {
-        if (typeof html !== "string") return html; // came from attempt()
-        var doc = new DOMParser().parseFromString(html, "text/html");
-        var text = doc.body ? doc.body.innerText : "";
-        if (text && text.indexOf("Received:") !== -1) return text;
-        failures.push("try " + (i + 1) + ": page had no headers");
-        return attempt(i + 1); // wrong page (login/error) -> try next form
       }).catch(function (e) {
         // Normalize to a plain string: Firefox wraps cross-compartment
         // rejection values in an unreadable wrapper otherwise.

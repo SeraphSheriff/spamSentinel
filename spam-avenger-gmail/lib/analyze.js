@@ -1,4 +1,4 @@
-/* Spamfighter for Gmail — analysis engine.
+/* Spam Avenger for Gmail — analysis engine.
  * Ported from spamfighter.py. No dependencies, no network except
  * RDAP + DNS-over-HTTPS lookups of the SPAMMER's IP.
  * Works in the browser extension and in Node (for tests).
@@ -373,10 +373,68 @@
         return new TextDecoder("utf-8").decode(bytes);
       }
     } catch (e) {}
-    if (cte.indexOf("quoted-printable") !== -1 || /=[0-9A-Fa-f]{2}/.test(t)) {
+    // v1.0.33: decode quoted-printable ONLY when this entity/part
+    // actually declares it, or the text shows QP soft line breaks
+    // ("=" at end of line). The old bare /=[0-9A-Fa-f]{2}/ sniff
+    // false-fired on innocent plain text containing "=32" etc.
+    // (e.g. "pid=32344&vid=222…"): decodeQP then converted "=32" to
+    // "2" and "=22" to a `"` byte, which truncated URLs at the
+    // extractUrls regex — real links came out mangled.
+    if (cte.indexOf("quoted-printable") !== -1 || /=\r?\n/.test(t)) {
       try { return decodeQP(t); } catch (e) {}
     }
     return t;
+  }
+
+  // --- MIME part walking (v1.0.32) ---
+  // Typical spam is multipart/*: the TOP-LEVEL headers rarely declare
+  // a Content-Transfer-Encoding — each MIME part carries its own.
+  // decodeBody() alone only honors the top level, so a base64 HTML
+  // part was never decoded and extractUrls() scanned base64 gibberish
+  // (the confirmed root cause of empty link lists on multipart spam).
+
+  // Boundary parameter out of the Content-Type header, or null.
+  function mimeBoundary(headers) {
+    var ct = getFirst(headers, "content-type");
+    var m = ct.match(/boundary\s*=\s*(?:"([^"]+)"|([^;\s]+))/i);
+    if (!m) return null;
+    return m[1] || m[2] || null;
+  }
+
+  // Split a multipart entity's body into [{headers, body}, ...].
+  // Returns [] when the entity isn't multipart or has no boundary.
+  function mimeParts(bodyText, headers) {
+    var ct = getFirst(headers, "content-type").toLowerCase();
+    if (ct.indexOf("multipart/") !== 0) return [];
+    var boundary = mimeBoundary(headers);
+    if (!boundary) return [];
+    var segments = String(bodyText).split("--" + boundary);
+    var parts = [];
+    for (var i = 1; i < segments.length; i++) { // [0] is the preamble
+      var seg = segments[i];
+      if (/^--/.test(seg)) break; // closing delimiter; rest is epilogue
+      seg = seg.replace(/^[ \t]*\r?\n/, "").replace(/\r?\n[ \t]*$/, "");
+      if (!seg.trim()) continue;
+      parts.push({
+        headers: parseHeaders(seg),
+        body: seg.split(/\r?\n\r?\n/).slice(1).join("\n\n")
+      });
+    }
+    return parts;
+  }
+
+  // Decode every MIME part per its OWN Content-Transfer-Encoding.
+  // One level of nesting is walked (e.g. multipart/alternative
+  // inside multipart/mixed). Returns an array of decoded part bodies.
+  function decodeMimeParts(bodyText, headers) {
+    var out = [];
+    mimeParts(bodyText, headers).forEach(function (p) {
+      out.push(decodeBody(p.body, p.headers));
+      mimeParts(p.body, p.headers).forEach(function (sub) {
+        out.push(decodeBody(sub.body, sub.headers));
+      });
+    });
+    return out;
   }
 
   // The Received header the traced IP actually came from (best evidence).
@@ -393,14 +451,21 @@
 
   function analyze(rawText) {
     var headers = parseHeaders(rawText);
-    var bodyText = String(rawText).split(/\r?\n\r?\n/).slice(1).join("\n\n");
-    bodyText = decodeBody(bodyText, headers);
+    var rawBody = String(rawText).split(/\r?\n\r?\n/).slice(1).join("\n\n");
+    var bodyText = decodeBody(rawBody, headers);
     var text = stripTags(bodyText).slice(0, 100000);
     var from = decodeMimeWords(getFirst(headers, "from"));
     var subject = decodeMimeWords(getFirst(headers, "subject"));
     var date = getFirst(headers, "date");
     var messageId = getFirst(headers, "message-id");
-    var urls = extractUrls(bodyText + " " + text);
+    // v1.0.32: also decode each MIME part on its own terms (a base64
+    // or quoted-printable part inside a multipart message) and scan
+    // the decoded part bodies — raw and tag-stripped — for links.
+    var urlText = bodyText + " " + text;
+    decodeMimeParts(rawBody, headers).forEach(function (partBody) {
+      urlText += " " + partBody + " " + stripTags(partBody);
+    });
+    var urls = extractUrls(urlText);
     var ip = originIp(headers);
     var rf = redFlags(from, urls, text);
     return {
@@ -451,6 +516,6 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api; // Node (tests)
   } else {
-    window.Spamfighter = api; // browser
+    window.SpamAvenger = api; // browser
   }
 })();
