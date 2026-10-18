@@ -240,3 +240,193 @@
 #spam-avenger-panel .sf-dot-yellow { color: #ffd60a; }
 #spam-avenger-panel .sf-dot-orange { color: #e8710a; }
 
+/* v1.0.49: "Your data in their hands" — the data-deletion demand
+   section (lib/demand.js). The Draft button is green because the
+   addon does the work: the letter opens addressed and filled in
+   Gmail and the user just reviews and clicks Send. The section
+   reuses .sf-actions / .sf-details-toggle / .sf-fine chrome.
+   v1.0.51: the section moved to the bottom of the panel, below
+   "Also report it", in its own zone (.sf-fight): a ruled divider
+   above a tinted card. It is a different kind of action from
+   the attack flow above it — ending a relationship with a
+   company the user once dealt with, not reporting a stranger —
+   and it must not read as one more row of that flow.
+   v1.0.52: the zone starts collapsed behind a toggle bar that
+   reuses the .sf-details-toggle chrome verbatim, so it reads
+   as a sibling of the "Show details" toggle; the zone's ruled
+   border-top is the visual separation now. The toggle's own
+   bottom margin (from .sf-details-toggle) is the gap between
+   the bar and the tinted card when the zone is expanded.
+   v1.0.55: the toggle breaks from the gray sibling chrome —
+   Michael's call, it goes YELLOW (the .sf-btn-yellow palette)
+   with "unwanted" bolded in the label, so the collapsed
+   section advertises itself instead of blending into the
+   panel furniture. The rules below carry the same specificity
+   as the .sf-details-toggle base + hover and sit after them,
+   so the yellow wins. */
+#spam-avenger-panel .sf-fight {
+  margin-top: 18px;
+  border-top: 2px solid #dadce0;
+  padding-top: 10px;
+}
+#spam-avenger-panel .sf-details-toggle.sf-fight-toggle {
+  background: #ffd60a;
+  color: #202124;
+  border-color: #e3c008;
+}
+#spam-avenger-panel .sf-details-toggle.sf-fight-toggle:hover {
+  background: #f0c600;
+}
+#spam-avenger-panel .sf-demand {
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+#spam-avenger-panel .sf-demand > b { display: block; margin-bottom: 6px; }
+#spam-avenger-panel .sf-demand-intro {
+  font-size: 12px;
+  color: #3c4043;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+#spam-avenger-panel .sf-demand-sub { margin: -2px 0 6px; }
+#spam-avenger-panel .sf-demand-step { margin-top: 6px; }
+/* v1.0.53: advisory mail-server status line under the demand's
+   Send-to field. Text-only (no background box) so it reads as a
+   hint, not an alert; the modifier class carries the verdict:
+   green = domain accepts email, amber = warning (uncertain or
+   likely bounce), gray = still checking / couldn't check. */
+#spam-avenger-panel .sf-demand-mx {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 6px;
+}
+#spam-avenger-panel .sf-demand-mx.sf-mx-ok { color: #137333; }
+#spam-avenger-panel .sf-demand-mx.sf-mx-warn { color: #b06000; }
+#spam-avenger-panel .sf-demand-mx.sf-mx-muted { color: #5f6368; }
+/* v1.0.54: the website-lookup errand button in the demand
+   step — a small text-button (link-styled, no box) so it reads
+   as an errand to run, not another action button. */
+#spam-avenger-panel .sf-lookup-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a73e8;
+  cursor: pointer;
+  text-align: left;
+}
+#spam-avenger-panel .sf-lookup-btn:hover { text-decoration: underline; }
+#spam-avenger-panel .sf-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  margin: 2px 0 6px;
+  /* v1.0.51: white on the tinted .sf-demand card, so the field
+     still reads as a field. */
+  background: #fff;
+}
+/* v1.0.55: the guess-chip row (.sf-chips/.sf-chip) is GONE —
+   the rules are deleted with the feature. In its place, the
+   RDAP suggestion row: a single quiet button under the
+   Send-to field naming the contact the domain's registration
+   record publishes. One row, clearly labeled, click-to-use —
+   never a wall of maybe-addresses. */
+#spam-avenger-panel .sf-demand-src {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: #f1f3f4;
+  color: #202124;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+#spam-avenger-panel .sf-demand-src:hover { background: #e8eaed; }
+/* v1.0.55: the website-errand instruction line doubles as the
+   empty-To guard's pointer: clicking "Open in Gmail" with an
+   empty field flashes it (a soft highlight that fades) so the
+   user's eye lands on the errand that fills the field. */
+#spam-avenger-panel .sf-demand-instr {
+  border-radius: 6px;
+  padding: 2px 5px;
+  margin-left: -5px;
+  transition: background-color 0.3s ease;
+}
+#spam-avenger-panel .sf-demand-instr.sf-flash {
+  background: #fef7e0;
+}
+#spam-avenger-panel .sf-demand textarea {
+  width: 100%;
+  height: 190px;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 11px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 6px 0;
+  resize: vertical;
+  background: #fff; /* v1.0.51: white on the tinted card */
+}
+
+/* v1.0.49: the shared "your details" mini-form built by
+   lib/demand.js (same markup in the panel and the toolbar popup;
+   the popup carries its own copy of these rules). */
+#spam-avenger-panel .sa-df-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+#spam-avenger-panel .sa-df-label {
+  flex: 0 0 44px;
+  color: #5f6368;
+  font-size: 12px;
+}
+#spam-avenger-panel .sa-df-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 13px;
+  background: #fff;
+  color: #202124;
+}
+#spam-avenger-panel .sa-df-note {
+  color: #5f6368;
+  font-size: 11px;
+  margin: 2px 0;
+}
+#spam-avenger-panel .sa-df-save {
+  background: #1e8e3e;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+#spam-avenger-panel .sa-df-save:hover { background: #188038; }
+#spam-avenger-panel .sa-df-save:disabled { background: #9aa0a6; cursor: default; }
+#spam-avenger-panel .sa-df-status {
+  color: #5f6368;
+  font-size: 11px;
+  margin: 6px 0 0;
+}
+

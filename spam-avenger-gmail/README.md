@@ -53,6 +53,16 @@ own servers (Google, Microsoft, Yahoo, etc.) — their IPs show up in
 headers for your own mail too, and reporting them would hit the wrong
 target. It tells you when that's the case.
 
+- **Your data in their hands**: one more panel action drafts a formal
+  data-deletion demand to the sender's company — delete everything,
+  opt me out of sale/sharing/tracking, purge backups, make your
+  processors delete too, and confirm in writing within 45 days or cite
+  the exact law that lets you keep it. It cites your state's privacy
+  act (Colorado, California, Texas, Virginia, Connecticut, Oregon,
+  Montana) where one grants a deletion right, and your ZIP — asked
+  once, stored only in your browser — picks the right law. The letter
+  opens in your Gmail for review, like the complaint; you send it.
+
 ## Privacy
 
 Everything runs inside your browser. The only network requests are
@@ -78,6 +88,9 @@ are never touched, uploaded, or sent anywhere.
 - `popup.html` — toolbar-icon help popup
 - `lib/analyze.js` — the analysis engine (header parsing, RDAP, complaint
   builder). Also runnable under Node for tests.
+- `lib/demand.js` — the data-deletion demand generator (letter builder,
+  ZIP→state→statute table, shared "your details" form). Also runnable
+  under Node for tests.
 - `icons/` — shield icons
 
 ## For the curious

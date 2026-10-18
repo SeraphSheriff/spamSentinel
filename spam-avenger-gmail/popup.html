@@ -6,10 +6,26 @@
   body { width: 300px; font-family: Roboto, Arial, sans-serif; font-size: 13px;
          color: #202124; margin: 0; padding: 14px; }
   h1 { font-size: 16px; margin: 0 0 8px; color: #c0392b; }
+  h2 { font-size: 13px; margin: 14px 0 6px; color: #202124;
+       border-top: 1px solid #dadce0; padding-top: 12px; }
   ol { margin: 8px 0; padding-left: 20px; }
   li { margin: 5px 0; }
   .fine { color: #5f6368; font-size: 11px; margin-top: 10px; }
   a { color: #1a73e8; }
+  /* "Your details" form — same markup lib/demand.js builds in the
+     panel; panel.css carries the panel-scoped copy of these rules. */
+  .sa-df-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+  .sa-df-label { flex: 0 0 40px; color: #5f6368; font-size: 12px; }
+  .sa-df-input { flex: 1; min-width: 0; box-sizing: border-box;
+    border: 1px solid #dadce0; border-radius: 8px; padding: 7px 8px;
+    font-size: 13px; background: #fff; color: #202124; }
+  .sa-df-note { color: #5f6368; font-size: 11px; margin: 2px 0; }
+  .sa-df-save { background: #1e8e3e; color: #fff; border: none;
+    border-radius: 8px; padding: 8px 18px; font-size: 13px;
+    font-weight: 600; cursor: pointer; margin-top: 4px; }
+  .sa-df-save:hover { background: #188038; }
+  .sa-df-save:disabled { background: #9aa0a6; cursor: default; }
+  .sa-df-status { color: #5f6368; font-size: 11px; margin: 6px 0 0; }
 </style>
 </head>
 <body>
@@ -21,9 +37,16 @@
     <li>Copy the complaint — or open it pre-addressed in Gmail — and send.</li>
   </ol>
   <p>Button colors: <span style="color:#1e8e3e">&#9679;</span> green &mdash; Spam Avenger does the work; you just review and send. <span style="color:#ffd60a">&#9679;</span> yellow &mdash; needs a few steps from you, and I'll guide you through them. <span style="color:#e8710a">&#9679;</span> orange &mdash; you're on your own with this one; no guide after the click.</p>
+  <h2>Your details — for data-deletion demands</h2>
+  <p>Any email in Gmail can also become a formal demand that the sender
+  delete your personal data — the panel drafts it from these details,
+  citing your state's privacy law.</p>
+  <div id="sa-details-slot"></div>
+  <p class="fine">Stored only in your browser, used only to fill in deletion demands you draft.</p>
   <p class="fine">Nothing is sent automatically. Everything runs in your browser;
   the only lookups are the spammer's IP (RDAP + reverse DNS).
   Free, no account, no config. Desktop Chrome / Edge / Brave.</p>
   <p class="fine"><a href="https://github.com/SeraphSheriff/spamSentinel" target="_blank">GitHub</a></p>
+  <script src="lib/demand.js"></script>
 </body>
 </html>

@@ -32,6 +32,21 @@ as the form is filled, and it is ignored (and deleted) if it is more
 than 30 minutes old. As always, nothing is submitted automatically —
 you review the filled form and send the report yourself.
 
+## Data-deletion demands and "your details"
+
+The panel can also draft a formal demand that the company behind an
+email delete your personal data. To fill that letter in, the
+extension asks for your name, account email, ZIP code, and state
+once, and stores them in your browser's own local extension storage
+(`chrome.storage.local`), on your device only. They are used for
+nothing else: never transmitted by the extension, never included in
+anything except a deletion-demand letter that you open in your own
+Gmail, review, and choose to send yourself. You can view or change
+them any time from the toolbar popup, and removing the extension
+removes them. The report-form case details described above behave
+exactly as before — a separate, temporary stash that is erased
+after use.
+
 ## What leaves your browser
 
 Only two kinds of requests, both about the **spammer's** infrastructure,
@@ -62,7 +77,9 @@ never about you:
   the IP-ownership lookups described above.
 - **Storage** — required to hold the case details locally, in your
   browser only, so the FTC and Google Safe Browsing report forms can
-  be pre-filled as described above.
+  be pre-filled as described above; and to keep the name, email, ZIP,
+  and state you choose to save for drafting data-deletion demands,
+  as described above.
 - **Access to safebrowsing.google.com and reportfraud.ftc.gov** —
   required to run that pre-filling on the report pages you open. The
   extension never submits those forms for you.
