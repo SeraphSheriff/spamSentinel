@@ -293,6 +293,19 @@
     return { flags: flags, senderDomain: dm, urlHosts: urlHosts };
   }
 
+  // Defang a URL for safe transit inside an abuse complaint: hxxp(s)
+  // scheme and bracketed dots in the host. A complaint that quotes live
+  // phishing links scores as spam at the receiving desk's filter — the
+  // report gets eaten (or the reporter listed) before a human sees it.
+  // The path stays byte-for-byte intact so the desk loses nothing.
+  function defangUrl(u) {
+    var s = String(u || "");
+    var m = s.match(/^(https?):\/\/([^/?#]+)([\s\S]*)$/i);
+    if (!m) return s;
+    var scheme = m[1].toLowerCase() === "https" ? "hxxps" : "hxxp";
+    return scheme + "://" + m[2].replace(/\./g, "[.]") + m[3];
+  }
+
   function buildComplaint(a) {
     if (a.skipComplaint || !a.ip || !a.abuse) return null;
     var L = [];
@@ -306,8 +319,8 @@
     L.push("  Subject:        " + (a.subject || "unknown"));
     L.push("  Date received:  " + (a.date || "unknown"));
     if (a.urls && a.urls.length) {
-      L.push("  Links in message:");
-      a.urls.slice(0, 10).forEach(function (u) { L.push("    - " + u); });
+      L.push("  Links in message (defanged so spam filters don't eat this complaint — read hxxps as https and [.] as .):");
+      a.urls.slice(0, 10).forEach(function (u) { L.push("    - " + defangUrl(u)); });
     }
     L.push("");
     L.push("Key headers as evidence:");
@@ -508,6 +521,7 @@
   var api = {
     parseHeaders: parseHeaders, originIp: originIp, isPrivateIp: isPrivateIp,
     analyze: analyze, investigate: investigate, buildComplaint: buildComplaint,
+    defangUrl: defangUrl,
     extractAbuse: extractAbuse, extractOrg: extractOrg, whitelisted: whitelisted,
     providerAdvice: providerAdvice,
     redFlags: redFlags, RDAP_BASES: RDAP_BASES

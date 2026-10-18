@@ -33,7 +33,12 @@ That's it. The button only appears when you're looking at an email.
   is the face underneath.
 - Looks up who owns that IP and finds their **abuse contact**.
 - Writes a ready-to-send complaint naming the IP, the claimed sender,
-  the subject, the links, and the key headers as evidence.
+  the subject, the links, and the key headers as evidence. The links
+  are **defanged** (`hxxps://example[.]com/...`) — a complaint quoting
+  live phishing links scores as spam at the receiving desk's filter
+  and can be eaten (or get the sender listed) before a human sees it;
+  defanging is the abuse community's standard way to share bad links
+  safely, and the complaint says how to read them.
 - Flags the usual scam tells: throwaway `.shop`-style domains, links
   that go somewhere different from the sender, pressure tactics,
   "verify your account" phishing, gift-card bait, unfilled `{{date}}`
