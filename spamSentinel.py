@@ -1036,37 +1036,64 @@ def _quarantine_cur_dir():
     return os.path.join(HOME_DIR, "mail", domain, user, "cur")
 
 
-def _fetch_quarantine_headers(ips, max_fetch=40, days=7):
+# Same derivation as _quarantine_cur_dir() above: the quarantine
+# mailbox's cur/new plus its .spam subfolder's cur/new.
+_q_user, _, _q_domain = CFG["QUARANTINE_MAILBOX"].partition("@")
+_q_base = os.path.join(HOME_DIR, "mail", _q_domain, _q_user)
+QUARANTINE_MAILDIRS = (
+    os.path.join(_q_base, "cur"),
+    os.path.join(_q_base, "new"),
+    os.path.join(_q_base, ".spam", "cur"),
+    os.path.join(_q_base, ".spam", "new"),
+)
+
+_URL_RE = re.compile(r"(https?)://([A-Za-z0-9\-._~%!$&'()*+,;=]+)", re.I)
+
+
+def _defang_text(text):
+    """Defang URLs in quoted message content: hxxp(s) scheme and
+    bracketed host dots, path untouched. A complaint pasting live
+    phishing links scores as spam at the receiving desk's filter."""
+    def _sub(m):
+        scheme = "hxxps" if m.group(1).lower() == "https" else "hxxp"
+        return scheme + "://" + m.group(2).replace(".", "[.]")
+    return _URL_RE.sub(_sub, text)
+
+
+def _fetch_quarantine_evidence(ips, max_fetch=60, days=7):
     """Match incident IPs to messages in the quarantine mailbox and return
-    {ip: full_headers_text}. Reads maildir files via the Fileman UAPI
-    (IMAP is unreachable from here) and matches the IP against Received
-    headers. Bounded: only messages from the last `days` days, at most
+    {ip: {"headers": full_headers_text, "body": defanged_body_excerpt}}.
+    Reads maildir files via the Fileman UAPI (IMAP is unreachable from
+    here) and matches the IP against the message headers. Scans the
+    INBOX folders AND the .spam subfolder: delivered spam is filed
+    there, and scanning only the root maildir silently matched nothing,
+    which is why complaints fell back to 'headers available on request'.
+    Bounded: only messages from the last `days` days, at most
     `max_fetch` file reads per run."""
     pending = set(ips)
     found = {}
     if not pending:
         return found
-    entries = _uapi_execute(
-        "Fileman/list_files",
-        {"dir": _quarantine_cur_dir()}) or []
     cutoff = time.time() - days * 86400
-    cands = []
-    for e in entries:
-        name = e.get("file") or ""
-        m = re.match(r"(\d+)\.", name)
-        if not m:
-            continue
-        try:
-            ts = int(m.group(1))
-        except ValueError:
-            continue
-        if ts >= cutoff:
-            cands.append((ts, name))
-    cands.sort(reverse=True)  # newest first
+    cands = []  # (ts, maildir, filename)
+    for mdir in QUARANTINE_MAILDIRS:
+        entries = _uapi_execute("Fileman/list_files", {"dir": mdir}) or []
+        for e in entries:
+            name = e.get("file") or ""
+            m = re.match(r"(\d+)\.", name)
+            if not m:
+                continue
+            try:
+                ts = int(m.group(1))
+            except ValueError:
+                continue
+            if ts >= cutoff:
+                cands.append((ts, mdir, name))
+    cands.sort(key=lambda c: c[0], reverse=True)  # newest first
     ip_res = {ip: re.compile(r"(?<![\d.])" + re.escape(ip) + r"(?![\d.])")
               for ip in pending}
     fetched = 0
-    for _ts, name in cands:
+    for _ts, mdir, name in cands:
         if not pending or fetched >= max_fetch:
             break
         # list_files truncates maildir names at ':' — try the common
@@ -1074,20 +1101,24 @@ def _fetch_quarantine_headers(ips, max_fetch=40, days=7):
         content = ""
         for variant in (name, name + ":2,S", name + ":2,RS", name + ":2,"):
             data = _uapi_execute("Fileman/get_file_content", {
-                "dir": _quarantine_cur_dir(),
-                "file": variant}) or {}
+                "dir": mdir, "file": variant}) or {}
             content = data.get("content") or ""
             if content:
                 break
+        if not content:
+            continue
         fetched += 1
-        head = content.split("\n\n", 1)[0][:8192]  # headers only, capped
+        head, _sep, body = content.partition("\n\n")
+        head = head[:8192]  # headers, capped
         for ip in list(pending):
             if ip_res[ip].search(head):
-                found[ip] = head.strip()
+                excerpt = _defang_text(body.strip()[:6000]) if body else ""
+                found[ip] = {"headers": head.strip(), "body": excerpt}
                 pending.discard(ip)
-    log("Header lookup: %d/%d incident IPs matched (%d files read)"
+    log("Evidence lookup: %d/%d incident IPs matched (%d files read)"
         % (len(found), len(ips), fetched))
     return found
+
 
 
 def _log_extract(sample_json):
@@ -1126,7 +1157,7 @@ def dispatch_queue(conn):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # match incident IPs to quarantined messages for full-header evidence
     all_ips = {i["ip"] for inc in groups.values() for i in inc}
-    headers_by_ip = _fetch_quarantine_headers(all_ips)
+    evidence_by_ip = _fetch_quarantine_evidence(all_ips)
     sent = 0
     try:
         for abuse_email, incidents in groups.items():
@@ -1157,12 +1188,18 @@ def dispatch_queue(conn):
                               "America/New_York):\n" +
                               "\n".join("     " + ln for ln in
                                         extract.split("\n")) + "\n")
-                hdrs = headers_by_ip.get(i["ip"])
-                if hdrs:
+                ev = evidence_by_ip.get(i["ip"])
+                if ev:
                     block += ("   Full headers of sample message "
                               "(plain text, as requested):\n" +
                               "\n".join("     " + ln for ln in
-                                        hdrs.split("\n")) + "\n")
+                                        ev["headers"].split("\n")) + "\n")
+                    if ev.get("body"):
+                        block += ("   Message body of sample (plain text, "
+                                  "links defanged for safe transit — read "
+                                  "hxxps as https and [.] as .):\n" +
+                                  "\n".join("     " + ln for ln in
+                                            ev["body"].split("\n")) + "\n")
                 else:
                     block += ("   Full message headers: available on request "
                               "— reply to this email.\n")
