@@ -692,12 +692,23 @@
         setTimeout(function () { copyBtn.textContent = "Copy complaint \u2014 paste it into an email"; }, 1500);
       });
       compBtn.addEventListener("click", function () {
-        var url = "https://mail.google.com/mail/u/" + accountIndex() +
-          "/?view=cm&fs=1" +
-          "&to=" + encodeURIComponent(c.to) +
-          "&su=" + encodeURIComponent(c.subject) +
-          "&body=" + encodeURIComponent(c.body);
-        window.open(url, "_blank", "noopener");
+        // v1.0.58: a complaint carrying full headers can exceed
+        // Gmail's compose-link length limit and die on a bare
+        // "Error 400". fitForCompose shrinks the complaint in steps
+        // until the link fits; if nothing fits, it hands back a
+        // short compose and we copy the FULL complaint so the user
+        // just pastes it in (the compose itself says so).
+        var plan = window.SpamAvenger.fitForCompose(accountIndex(), a);
+        if (!plan) return;
+        if (plan.mode === "paste") {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(plan.complaint.body).catch(function () {});
+          }
+          var origLabel = compBtn.textContent;
+          compBtn.textContent = "Copied! Paste into the email (Ctrl+V), then Send";
+          setTimeout(function () { compBtn.textContent = origLabel; }, 6000);
+        }
+        window.open(plan.url, "_blank", "noopener");
       });
     } else if (a.ip && !a.skipComplaint) {
       body.appendChild(h("p", { "class": "sf-warn" },

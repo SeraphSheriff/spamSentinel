@@ -35,7 +35,10 @@ That's it. The button only appears when you're looking at an email.
 - Writes a ready-to-send complaint naming the IP, the claimed sender,
   the subject, the links, the **full headers as evidence**, and the
   message body — desks like AWS Trust & Safety bounce complaints that
-  offer headers "on request," so they're attached up front. The links
+  offer headers "on request," so they're attached up front. (The
+  cryptographic signature blocks — ARC/DKIM — are left out: kilobytes
+  of base64 no desk can act on. The routing chain and authentication
+  verdicts are all there.) The links
   are **defanged** (`hxxps://example[.]com/...`) — a complaint quoting
   live phishing links scores as spam at the receiving desk's filter
   and can be eaten (or get the sender listed) before a human sees it;

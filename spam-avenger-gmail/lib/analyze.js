@@ -315,7 +315,42 @@
       });
   }
 
-  function buildComplaint(a) {
+  // Cryptographic signature headers (Google's ARC seals, the sender's
+  // DKIM) are kilobytes of base64 that say nothing an abuse desk can
+  // act on — the desk needs the routing chain and the authentication
+  // VERDICTS, which live in Received / Authentication-Results. Left
+  // in, the signatures bloat a complaint until Gmail's compose link
+  // refuses it outright (v1.0.57 field failure: Error 400 on
+  // Open-in-Gmail). Strip the signature blocks, folded lines and all.
+  var SIGNATURE_HEADERS = {
+    "arc-seal": true, "arc-message-signature": true,
+    "dkim-signature": true, "domainkey-signature": true
+  };
+
+  function trimHeaders(raw) {
+    var lines = String(raw || "").split(/\r?\n/);
+    var out = [];
+    var dropping = false, stripped = false;
+    lines.forEach(function (ln) {
+      if (/^[ \t]/.test(ln)) {           // folded continuation line
+        if (!dropping) out.push(ln);
+        return;
+      }
+      var m = ln.match(/^([A-Za-z0-9-]+):/);
+      if (m && SIGNATURE_HEADERS[m[1].toLowerCase()]) {
+        dropping = true; stripped = true;
+        return;
+      }
+      dropping = false;
+      out.push(ln);
+    });
+    return { text: out.join("\n"), stripped: stripped };
+  }
+
+  function buildComplaint(a, opts) {
+    opts = opts || {};
+    var headerCap = opts.headerCap != null ? opts.headerCap : 8000;
+    var bodyCap = opts.bodyCap != null ? opts.bodyCap : 4000;
     if (a.skipComplaint || !a.ip || !a.abuse) return null;
     var L = [];
     L.push("Hello Abuse Team,");
@@ -334,15 +369,19 @@
     L.push("");
     if (a.fullHeaders) {
       // Desks (AWS Trust & Safety explicitly) bounce complaints that
-      // offer headers "on request" — attach the full block, raw: it is
-      // evidence. Cap it so a pathological header block can't bloat
-      // the complaint past usability.
-      var fh = String(a.fullHeaders);
-      var truncated = fh.length > 8000;
-      if (truncated) fh = fh.slice(0, 8000);
+      // offer headers "on request" — attach the full block: it is
+      // evidence. Two trims keep it shippable: signature blocks are
+      // stripped (trimHeaders, above), and the result is capped so a
+      // pathological header block can't bloat the complaint past
+      // usability.
+      var th = trimHeaders(String(a.fullHeaders));
+      var fh = th.text;
+      var truncated = fh.length > headerCap;
+      if (truncated) fh = fh.slice(0, headerCap);
       L.push("Full headers (plain text, as received):");
       fh.split("\n").forEach(function (ln) { L.push("  " + ln); });
-      if (truncated) L.push("  [headers truncated at 8000 characters]");
+      if (th.stripped) L.push("  [ARC/DKIM signature blocks omitted — routing and authentication headers are complete]");
+      if (truncated) L.push("  [headers truncated at " + headerCap + " characters]");
       L.push("");
     } else {
       L.push("Key headers as evidence:");
@@ -350,8 +389,8 @@
       if (a.ingressReceived) L.push("  " + a.ingressReceived);
       L.push("");
     }
-    if (a.bodyText) {
-      var bt = defangText(String(a.bodyText).slice(0, 4000));
+    if (a.bodyText && bodyCap > 0) {
+      var bt = defangText(String(a.bodyText).slice(0, bodyCap));
       L.push("Message body (plain text, links defanged so spam filters don't eat this complaint — read hxxps as https and [.] as .):");
       bt.split("\n").forEach(function (ln) { L.push("  " + ln); });
       L.push("");
@@ -362,6 +401,55 @@
       subject: "Network abuse complaint — spam from " + a.ip,
       body: L.join("\n")
     };
+  }
+
+  // Gmail's compose-by-link (?view=cm) rejects very long URLs with a
+  // bare "Error 400" — no explanation, dead end (v1.0.57 field
+  // failure). Keep every compose URL under a conservative budget by
+  // shrinking the complaint in steps (body excerpt first, headers
+  // last — the links section is never cut), and if even the smallest
+  // useful complaint won't fit, fall back to paste mode: the caller
+  // copies the FULL complaint to the clipboard and opens a compose
+  // carrying only To/Subject plus a short "press Ctrl+V" note. The
+  // panel's complaint text (and its Copy button) always carries the
+  // unshrunk complaint.
+  var COMPOSE_URL_BUDGET = 10000;
+
+  var PASTE_NOTE = "The complaint was too long for a direct email link, " +
+    "so Spam Avenger copied it to your clipboard instead.\n\n" +
+    "Click in this box, press Ctrl+V (Cmd+V on a Mac) to paste the " +
+    "full complaint here, then click Send.";
+
+  function composeUrl(acct, c, bodyOverride) {
+    return "https://mail.google.com/mail/u/" + acct +
+      "/?view=cm&fs=1" +
+      "&to=" + encodeURIComponent(c.to) +
+      "&su=" + encodeURIComponent(c.subject) +
+      "&body=" + encodeURIComponent(
+        bodyOverride != null ? bodyOverride : c.body);
+  }
+
+  function fitForCompose(acct, a) {
+    var full = a.complaint || buildComplaint(a);
+    if (!full) return null;
+    var url = composeUrl(acct, full);
+    if (url.length <= COMPOSE_URL_BUDGET) {
+      return { mode: "direct", complaint: full, url: url };
+    }
+    var ladder = [
+      { bodyCap: 2000 }, { bodyCap: 800 }, { bodyCap: 0 },
+      { bodyCap: 0, headerCap: 3000 }, { bodyCap: 0, headerCap: 1500 }
+    ];
+    for (var i = 0; i < ladder.length; i++) {
+      var c2 = buildComplaint(a, ladder[i]);
+      if (!c2) continue;
+      var u2 = composeUrl(acct, c2);
+      if (u2.length <= COMPOSE_URL_BUDGET) {
+        return { mode: "shrunk", complaint: c2, url: u2 };
+      }
+    }
+    return { mode: "paste", complaint: full,
+             url: composeUrl(acct, full, PASTE_NOTE) };
   }
 
   // Decode RFC 2047 encoded-words: =?charset?Q?...?= / =?charset?B?...?=
@@ -552,6 +640,8 @@
   var api = {
     parseHeaders: parseHeaders, originIp: originIp, isPrivateIp: isPrivateIp,
     analyze: analyze, investigate: investigate, buildComplaint: buildComplaint,
+    trimHeaders: trimHeaders, fitForCompose: fitForCompose,
+    composeUrl: composeUrl, COMPOSE_URL_BUDGET: COMPOSE_URL_BUDGET,
     defangUrl: defangUrl, defangText: defangText,
     extractAbuse: extractAbuse, extractOrg: extractOrg, whitelisted: whitelisted,
     providerAdvice: providerAdvice,
