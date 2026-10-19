@@ -306,6 +306,15 @@
     return scheme + "://" + m[2].replace(/\./g, "[.]") + m[3];
   }
 
+  // Defang every URL inside a block of text (for quoted message bodies).
+  function defangText(t) {
+    return String(t || "").replace(/(https?):\/\/([A-Za-z0-9\-._~%!$&'()*+,;=]+)/gi,
+      function (m, scheme, host) {
+        return (scheme.toLowerCase() === "https" ? "hxxps" : "hxxp") +
+          "://" + host.replace(/\./g, "[.]");
+      });
+  }
+
   function buildComplaint(a) {
     if (a.skipComplaint || !a.ip || !a.abuse) return null;
     var L = [];
@@ -323,10 +332,30 @@
       a.urls.slice(0, 10).forEach(function (u) { L.push("    - " + defangUrl(u)); });
     }
     L.push("");
-    L.push("Key headers as evidence:");
-    L.push("  Message-ID: " + (a.messageId || "unknown"));
-    if (a.ingressReceived) L.push("  " + a.ingressReceived);
-    L.push("");
+    if (a.fullHeaders) {
+      // Desks (AWS Trust & Safety explicitly) bounce complaints that
+      // offer headers "on request" — attach the full block, raw: it is
+      // evidence. Cap it so a pathological header block can't bloat
+      // the complaint past usability.
+      var fh = String(a.fullHeaders);
+      var truncated = fh.length > 8000;
+      if (truncated) fh = fh.slice(0, 8000);
+      L.push("Full headers (plain text, as received):");
+      fh.split("\n").forEach(function (ln) { L.push("  " + ln); });
+      if (truncated) L.push("  [headers truncated at 8000 characters]");
+      L.push("");
+    } else {
+      L.push("Key headers as evidence:");
+      L.push("  Message-ID: " + (a.messageId || "unknown"));
+      if (a.ingressReceived) L.push("  " + a.ingressReceived);
+      L.push("");
+    }
+    if (a.bodyText) {
+      var bt = defangText(String(a.bodyText).slice(0, 4000));
+      L.push("Message body (plain text, links defanged so spam filters don't eat this complaint — read hxxps as https and [.] as .):");
+      bt.split("\n").forEach(function (ln) { L.push("  " + ln); });
+      L.push("");
+    }
     L.push("Please investigate the account or customer responsible and take appropriate action. Thank you.");
     return {
       to: a.abuse,
@@ -486,6 +515,8 @@
       ip: ip, urls: urls, urlHosts: rf.urlHosts, senderDomain: rf.senderDomain,
       flags: rf.flags,
       ingressReceived: evidenceHeader(headers, ip),
+      fullHeaders: String(rawText).split(/\r?\n\r?\n/)[0] || "",
+      bodyText: text,
       bodyPreview: text.slice(0, 1500)
     };
   }
@@ -521,7 +552,7 @@
   var api = {
     parseHeaders: parseHeaders, originIp: originIp, isPrivateIp: isPrivateIp,
     analyze: analyze, investigate: investigate, buildComplaint: buildComplaint,
-    defangUrl: defangUrl,
+    defangUrl: defangUrl, defangText: defangText,
     extractAbuse: extractAbuse, extractOrg: extractOrg, whitelisted: whitelisted,
     providerAdvice: providerAdvice,
     redFlags: redFlags, RDAP_BASES: RDAP_BASES

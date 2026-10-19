@@ -33,7 +33,9 @@ That's it. The button only appears when you're looking at an email.
   is the face underneath.
 - Looks up who owns that IP and finds their **abuse contact**.
 - Writes a ready-to-send complaint naming the IP, the claimed sender,
-  the subject, the links, and the key headers as evidence. The links
+  the subject, the links, the **full headers as evidence**, and the
+  message body — desks like AWS Trust & Safety bounce complaints that
+  offer headers "on request," so they're attached up front. The links
   are **defanged** (`hxxps://example[.]com/...`) — a complaint quoting
   live phishing links scores as spam at the receiving desk's filter
   and can be eaten (or get the sender listed) before a human sees it;
