@@ -114,3 +114,10 @@ Same fight, three weapons:
 
 Built October 2026. Free forever. If it helps you punish a spammer,
 that's the whole point.
+
+## ⭐ Rate it
+
+If Spam Avenger helps you, please leave a rating or review on
+[Firefox Add-ons](https://addons.mozilla.org/addon/spam-avenger-for-gmail/).
+It helps other people find it, and word of mouth is the only
+advertising this add-on has.
