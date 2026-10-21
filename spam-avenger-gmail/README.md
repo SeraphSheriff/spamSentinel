@@ -1,3 +1,7 @@
+> **MOVED — Spam Avenger for Gmail now lives in its own repo: [github.com/SeraphSheriff/spam-avenger](https://github.com/SeraphSheriff/spam-avenger)**
+> This folder is kept so existing links (including the privacy policy URL the stores
+> were given) keep working. New code and updates land in the new repo.
+
 # 🛡️ Spam Avenger for Gmail
 
 One click traces who **really** sent a spam email and writes the abuse
