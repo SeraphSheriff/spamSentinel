@@ -197,6 +197,100 @@ def _whitelisted_sender(sender):
     return any(d == w or d.endswith("." + w) for w in SENDER_WHITELIST)
 
 
+# Abuse-desk mailboxes, matched on the localpart (lowercased, +tags
+# ignored): the named mailboxes, or any localpart starting with
+# "abuse" (abuse@, abuse1@, abuse-team@, ...). Used by the
+# own-outbound guard below to recognize mail addressed TO a desk.
+ABUSE_DESK_LOCALPARTS = ("abuse", "abuse1", "postmaster", "mailer-daemon")
+
+
+# Recipients that are themselves abuse desks. Mail addressed TO an
+# abuse desk in our own delivery logs is our outbound complaint mail
+# (or a forward of it) — never an incident on our network.
+ABUSE_DESK_RECIPIENT_LOCALPARTS = ("postmaster", "mailer-daemon", "noc",
+                                   "security", "trustandsafety")
+
+
+def _is_abuse_desk_recipient(recipient):
+    parts = (recipient or "").rsplit("@", 1)
+    if len(parts) != 2:
+        return False
+    local = parts[0].lower().strip().split("+", 1)[0]
+    return (local in ABUSE_DESK_RECIPIENT_LOCALPARTS
+            or local in ABUSE_DESK_LOCALPARTS
+            or local.startswith("abuse"))
+
+
+def _is_local_sender(sender):
+    """True when an envelope sender is one of our own addresses: a
+    bare local username (the server account name — locally generated
+    mail only) or any mailbox on the monitored domain."""
+    s = (sender or "").strip().lower()
+    if not s:
+        return False
+    if "@" not in s:
+        return True
+    return s.rsplit("@", 1)[1] == (CFG.get("MONITORED_DOMAIN")
+                                   or "example.com").lower()
+
+
+def _is_own_outbound(item):
+    """True when an EmailTrack record is our own outbound mail, which
+    is never a spam incident. EmailTrack puts the DESTINATION MX's IP
+    in 'ip' for an outbound delivery, so a log lane that trusts 'ip'
+    builds detections against the receiving side's own mail relays
+    out of our complaint deliveries — every complaint spawns a
+    self-detection (the self-loop). Signatures of own outbound mail:
+      * submitted locally: 'senderip' is loopback (real inbound mail
+        has senderip == the remote connecting IP);
+      * addressed to an abuse-desk recipient (our complaints);
+      * envelope sender is a bare local username with no '@' —
+        locally generated mail only; remote envelope senders are
+        always full addresses.
+    Field case: a forward sent out via a third-party webmail relay
+    carried the FULL local address as envelope sender and the
+    relay's IP as 'senderip', so all three tests above missed and
+    the recipient's inbound security-gateway relay was accused
+    instead (repeated complaints, then a quarantine block). Two
+    more signatures, either of which is decisive on its own:
+      * envelope sender is ANY local address on the monitored
+        domain — our own sent mail is never a detection, whatever
+        relay carried it and whoever it was addressed to;
+      * the record has the outbound delivery shape — a 'deliveredto'
+        field, or transport_is_remote set — with a local sender and
+        an external recipient."""
+    sip = (item.get("senderip") or "").strip()
+    if sip in ("::1", "127.0.0.1", "localhost"):
+        return True
+    if _is_abuse_desk_recipient(item.get("recipient")):
+        return True
+    sender = (item.get("sender") or "").strip()
+    if _is_local_sender(sender):
+        return True
+    if sender:
+        recip = (item.get("recipient")
+                 or item.get("deliveredto") or "").strip()
+        outbound_shape = bool(item.get("deliveredto")) or str(
+            item.get("transport_is_remote") or "") not in ("", "0")
+        if (outbound_shape and recip and "@" in recip
+                and not _is_local_sender(recip)):
+            return True
+    return False
+
+
+def _sample_is_own_outbound(sample_json):
+    """Queue/block backstop for telemetry rows stored before the
+    upsert guard existed: re-run the own-outbound test against the
+    row's stored EmailTrack sample."""
+    if not sample_json:
+        return False
+    try:
+        r = json.loads(sample_json)
+    except Exception:
+        return False
+    return _is_own_outbound(r)
+
+
 def _s(dt):
     """Normalize a datetime-or-string DB value to 'YYYY-MM-DD HH:MM:SS'."""
     if hasattr(dt, "strftime"):
@@ -696,15 +790,24 @@ def block_spammer_ips(conn):
     nothing is recorded and the run retries next time."""
     cur = conn.cursor()
     cur.execute(
-        "SELECT sender_ip, resolved_host, sender_email, envelope_sender "
+        "SELECT sender_ip, resolved_host, sender_email, envelope_sender, "
+        "sample_record "
         "FROM spammer_telemetry "
         "WHERE sender_email NOT IN ('Internal Address','Unknown / Hidden Registry Mail')")
     candidates = {}
-    for ip, host, abuse, env_sender in cur.fetchall():
+    real_ips = set()
+    poison_ips = set()
+    for ip, host, abuse, env_sender, sample in cur.fetchall():
         if _whitelisted(host):
             continue  # big-provider infrastructure, never blocked
         if _whitelisted_sender(env_sender):
             continue  # known-legit mailing list, never blocked
+        if _sample_is_own_outbound(sample):
+            poison_ips.add(ip)
+            continue  # own-outbound artifact row: a relay that only
+            # ever "sent" us our own complaints/forwards must never
+            # be quarantine-blocked
+        real_ips.add(ip)
         entry = candidates.setdefault(ip, {"host": host, "abuse": abuse,
                                            "senders": set()})
         if env_sender:
@@ -729,6 +832,17 @@ def block_spammer_ips(conn):
             cur.execute("DELETE FROM blocked_ips WHERE ip = ?", (ip,))
             already.discard(ip)
             log("Block phase: lifted block on %s (now whitelisted)" % ip)
+    # Self-healing for the own-outbound self-loop: an IP whose ONLY
+    # telemetry rows are own-outbound artifacts was blocked (if at
+    # all) for receiving our own mail. Lift those blocks; an IP with
+    # any real incident row keeps its block.
+    for ip in sorted(poison_ips - real_ips):
+        if ip in already:
+            cur.execute("DELETE FROM blocked_ips WHERE ip = ?", (ip,))
+            already.discard(ip)
+            lifted.append(ip)
+            log("Block phase: lifted block on %s (own-outbound "
+                "artifact — self-loop fix)" % ip)
     new_ips = sorted(ip for ip in candidates if ip not in already)
     total = len(already) + len(new_ips)
     if not new_ips:
@@ -887,6 +1001,7 @@ def upsert_telemetry(conn, logs):
     kept = 0
     skipped_seen = 0
     skipped_invalid = 0
+    skipped_self = 0
     total = len(logs)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log("Resolving abuse contacts for %d log items..." % total)
@@ -902,6 +1017,17 @@ def upsert_telemetry(conn, logs):
         cur.execute("SELECT 1 FROM seen_deliveries WHERE record_key=?", (key,))
         if cur.fetchone():
             skipped_seen += 1
+            continue
+        if _is_own_outbound(item):
+            # Our own outbound mail (complaints, reports, forwards) is
+            # never an incident — EmailTrack lists the destination MX
+            # as 'ip' for those, which is how a recipient's relay got
+            # accused with our own mail (the self-loop). Mark seen.
+            cur.execute("INSERT OR IGNORE INTO seen_deliveries "
+                        "(record_key, first_seen) VALUES (?,?)", (key, now))
+            skipped_self += 1
+            log("Suppressed own outbound record (never an incident): "
+                "%s -> %s" % (sender, item.get("recipient")))
             continue
         if n % 10 == 0:
             log("... %d/%d items processed" % (n, total))
@@ -936,8 +1062,9 @@ def upsert_telemetry(conn, logs):
             log("DB fault for %s: %s" % (ip, e))
     conn.commit()
     log("Telemetry upserted: %d new records "
-        "(%d already-seen skipped, %d invalid skipped)"
-        % (kept, skipped_seen, skipped_invalid))
+        "(%d already-seen skipped, %d invalid skipped, "
+        "%d own-outbound suppressed)"
+        % (kept, skipped_seen, skipped_invalid, skipped_self))
 
 
 def build_abuse_queue(conn):
@@ -965,6 +1092,9 @@ def build_abuse_queue(conn):
             continue  # big-provider infrastructure, not a spammer
         if _whitelisted_sender(env_sender):
             continue  # known-legit mailing list, not a threat
+        if _sample_is_own_outbound(sample):
+            continue  # own-outbound artifact row stored before the
+            # upsert guard existed (the self-complaint loop)
         if geo_tier(ip, env_sender, host) == "RED":
             continue  # geo-blocked: straight to quarantine, no complaint
         groups.setdefault(abuse, []).append({
